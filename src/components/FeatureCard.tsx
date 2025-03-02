@@ -13,12 +13,12 @@ const FeatureCard = ({ icon, title, description, className }: FeatureCardProps) 
   return (
     <div 
       className={cn(
-        "group relative p-6 rounded-xl card-hover glass-panel flex flex-col gap-2",
+        "p-4 rounded-lg border bg-background",
         className
       )}
     >
       <div className="mb-2 text-primary">{icon}</div>
-      <h3 className="text-xl font-medium">{title}</h3>
+      <h3 className="text-base font-medium mb-1">{title}</h3>
       <p className="text-sm text-muted-foreground">{description}</p>
     </div>
   );

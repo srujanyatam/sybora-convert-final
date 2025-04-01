@@ -66,6 +66,9 @@ export const convertDatabase = async (
       failed: 1,
       details: [
         // Table details would be populated here
+        { name: "CUSTOMERS", status: "success", rows: 15243 },
+        { name: "ORDERS", status: "success", rows: 42891 },
+        { name: "PRODUCTS", status: "success", rows: 1254 }
       ]
     },
     storedProcedures: {
@@ -74,6 +77,9 @@ export const convertDatabase = async (
       failed: 3,
       details: [
         // Stored procedure details would be populated here
+        { name: "sp_get_customer", status: "success" },
+        { name: "sp_update_inventory", status: "success" },
+        { name: "sp_process_order", status: "warning", issues: ["Cursor logic modified"] }
       ]
     },
     triggers: {
@@ -82,6 +88,8 @@ export const convertDatabase = async (
       failed: 2,
       details: [
         // Trigger details would be populated here
+        { name: "trg_order_update", status: "success" },
+        { name: "trg_inventory_check", status: "warning", issues: ["Transaction isolation modified"] }
       ]
     },
     performance: {
@@ -112,29 +120,94 @@ export const convertDatabase = async (
 };
 
 /**
+ * Generate a downloadable conversion package
+ */
+export const generateDownloadPackage = async (resultId: string): Promise<Blob> => {
+  // In a real app, this would call an API to generate the download package
+  // For now, we'll generate a mock SQL file
+  
+  // Simulate a short delay to mimic server processing
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  // Create mock SQL content with appropriate Sybase-to-Oracle conversion examples
+  const sqlContent = `-- Generated Oracle SQL script for conversion ${resultId}
+-- Conversion timestamp: ${new Date().toISOString()}
+
+-- Table structure for CUSTOMERS
+CREATE TABLE CUSTOMERS (
+  customer_id NUMBER(10) PRIMARY KEY,
+  first_name VARCHAR2(50) NOT NULL,
+  last_name VARCHAR2(50) NOT NULL,
+  email VARCHAR2(100) UNIQUE,
+  phone VARCHAR2(20),
+  address_line1 VARCHAR2(100),
+  address_line2 VARCHAR2(100),
+  city VARCHAR2(50),
+  state VARCHAR2(50),
+  postal_code VARCHAR2(20),
+  country VARCHAR2(50),
+  created_date DATE DEFAULT SYSDATE,
+  last_updated DATE
+);
+
+-- Sequence for CUSTOMERS
+CREATE SEQUENCE customers_seq
+  START WITH 1
+  INCREMENT BY 1
+  NOCACHE
+  NOCYCLE;
+
+-- Trigger for CUSTOMERS (converted from Sybase trigger)
+CREATE OR REPLACE TRIGGER trg_customers_bi
+BEFORE INSERT ON CUSTOMERS
+FOR EACH ROW
+BEGIN
+  IF :new.customer_id IS NULL THEN
+    SELECT customers_seq.NEXTVAL INTO :new.customer_id FROM dual;
+  END IF;
+  
+  :new.created_date := SYSDATE;
+  :new.last_updated := SYSDATE;
+END;
+/
+
+-- Stored procedure for getting customer details (converted from Sybase stored proc)
+CREATE OR REPLACE PROCEDURE sp_get_customer (
+  p_customer_id IN NUMBER,
+  p_cursor OUT SYS_REFCURSOR
+)
+AS
+BEGIN
+  OPEN p_cursor FOR
+    SELECT *
+    FROM CUSTOMERS
+    WHERE customer_id = p_customer_id;
+END sp_get_customer;
+/
+
+-- Sample data insert statements
+INSERT INTO CUSTOMERS (first_name, last_name, email, phone, address_line1, city, state, postal_code, country)
+VALUES ('John', 'Smith', 'john.smith@example.com', '555-123-4567', '123 Main St', 'Anytown', 'CA', '12345', 'USA');
+
+INSERT INTO CUSTOMERS (first_name, last_name, email, phone, address_line1, city, state, postal_code, country)
+VALUES ('Jane', 'Doe', 'jane.doe@example.com', '555-987-6543', '456 Oak Ave', 'Somewhere', 'NY', '67890', 'USA');
+
+COMMIT;
+
+-- End of conversion script
+`;
+  
+  // Return a downloadable blob with SQL content
+  return new Blob([sqlContent], {
+    type: 'application/sql'
+  });
+};
+
+/**
  * Share the conversion results
  * This would generate a shareable link in a real application
  */
 export const shareResults = async (resultId: string): Promise<string> => {
   // In a real app, this would call an API to generate a shareable link
   return `https://sybora-convert.example.com/results/${resultId}`;
-};
-
-/**
- * Mock function to generate a downloadable conversion package
- */
-export const generateDownloadPackage = async (resultId: string): Promise<Blob> => {
-  // In a real app, this would call an API to generate the download package
-  // For now, we'll just return a mock JSON file
-  const mockData = {
-    resultId,
-    timestamp: new Date().toISOString(),
-    content: "This would be the converted database scripts and data"
-  };
-  
-  const blob = new Blob([JSON.stringify(mockData, null, 2)], {
-    type: 'application/json'
-  });
-  
-  return blob;
 };

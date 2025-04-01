@@ -1,14 +1,123 @@
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, Check, FileText } from "lucide-react";
+import { toast } from "sonner";
+import { generateDownloadPackage } from "@/lib/conversion";
+
+interface ConversionData {
+  fileName: string;
+  fileSize: number;
+  sourceType: string;
+  targetType: string;
+  timestamp: string;
+  result?: any;
+  [key: string]: any;
+}
 
 const Results = () => {
+  const [conversionData, setConversionData] = useState<ConversionData | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
+
   useEffect(() => {
     // Scroll to top when component mounts
     window.scrollTo(0, 0);
+    
+    // Get conversion data from sessionStorage
+    const storedData = sessionStorage.getItem("conversionData");
+    if (storedData) {
+      setConversionData(JSON.parse(storedData));
+    }
   }, []);
+
+  const handleDownload = async (fileType: string) => {
+    if (!conversionData) return;
+    
+    setIsDownloading(true);
+    toast.loading(`Preparing ${fileType} download...`);
+    
+    try {
+      // Generate a unique ID for the download
+      const resultId = `${conversionData.sourceType}-to-${conversionData.targetType}-${Date.now()}`;
+      
+      // Get the download package
+      const blob = await generateDownloadPackage(resultId);
+      
+      // Create a download link
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${fileType.toLowerCase().replace(/\s+/g, '-')}.sql`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast.dismiss();
+      toast.success(`${fileType} downloaded successfully`);
+    } catch (error) {
+      console.error("Download error:", error);
+      toast.dismiss();
+      toast.error(`Failed to download ${fileType}`);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+  
+  const handleDownloadAll = async () => {
+    if (!conversionData) return;
+    
+    setIsDownloading(true);
+    toast.loading("Preparing complete package download...");
+    
+    try {
+      // Generate a unique ID for the download
+      const resultId = `${conversionData.sourceType}-to-${conversionData.targetType}-${Date.now()}`;
+      
+      // Get the download package
+      const blob = await generateDownloadPackage(resultId);
+      
+      // Create a download link
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `complete-conversion-package.zip`;
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      
+      toast.dismiss();
+      toast.success("Complete package downloaded successfully");
+    } catch (error) {
+      console.error("Download error:", error);
+      toast.dismiss();
+      toast.error("Failed to download complete package");
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  if (!conversionData) {
+    return (
+      <div className="flex flex-col min-h-screen py-12">
+        <div className="container px-4 md:px-6">
+          <div className="flex flex-col items-center justify-center">
+            <h2 className="text-2xl font-bold mb-4">No Conversion Data Found</h2>
+            <p className="text-muted-foreground mb-6">Please start a new conversion to see results.</p>
+            <Link to="/converter">
+              <Button>Start New Conversion</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col min-h-screen py-12">
@@ -86,22 +195,42 @@ const Results = () => {
             <div className="flex flex-col gap-4 mt-4">
               <h3 className="font-medium">Download Files</h3>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <Button variant="outline" className="justify-start gap-2">
+                <Button 
+                  variant="outline" 
+                  className="justify-start gap-2"
+                  onClick={() => handleDownload("Oracle Schema Scripts")}
+                  disabled={isDownloading}
+                >
                   <FileText className="w-4 h-4" />
                   Oracle Schema Scripts
                   <Download className="w-4 h-4 ml-auto" />
                 </Button>
-                <Button variant="outline" className="justify-start gap-2">
+                <Button 
+                  variant="outline" 
+                  className="justify-start gap-2"
+                  onClick={() => handleDownload("Data Export Files")}
+                  disabled={isDownloading}
+                >
                   <FileText className="w-4 h-4" />
                   Data Export Files
                   <Download className="w-4 h-4 ml-auto" />
                 </Button>
-                <Button variant="outline" className="justify-start gap-2">
+                <Button 
+                  variant="outline" 
+                  className="justify-start gap-2"
+                  onClick={() => handleDownload("Conversion Report")}
+                  disabled={isDownloading}
+                >
                   <FileText className="w-4 h-4" />
                   Conversion Report
                   <Download className="w-4 h-4 ml-auto" />
                 </Button>
-                <Button variant="outline" className="justify-start gap-2">
+                <Button 
+                  variant="outline" 
+                  className="justify-start gap-2"
+                  onClick={() => handleDownload("Validation Summary")}
+                  disabled={isDownloading}
+                >
                   <FileText className="w-4 h-4" />
                   Validation Summary
                   <Download className="w-4 h-4 ml-auto" />
@@ -117,7 +246,12 @@ const Results = () => {
                 Back to Converter
               </Button>
             </Link>
-            <Button>Download All Files</Button>
+            <Button 
+              onClick={handleDownloadAll}
+              disabled={isDownloading}
+            >
+              Download All Files
+            </Button>
           </div>
         </div>
       </div>

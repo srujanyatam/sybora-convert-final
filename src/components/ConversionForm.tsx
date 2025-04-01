@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import FileUploader from "./FileUploader";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, Check } from "lucide-react";
+import { convertDatabase } from "@/lib/conversion";
 
 const FormSchema = z.object({
   sourceType: z.string().default("sybase"),
@@ -45,27 +46,33 @@ const ConversionForm = () => {
     }
     
     setIsSubmitting(true);
-    
-    // Simulate processing
     toast.loading("Processing your conversion request...");
     
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
-      toast.dismiss();
-      toast.success("Conversion process started successfully");
+    try {
+      // Process the conversion
+      const result = await convertDatabase(file, data);
       
-      // Store the conversion data in sessionStorage
+      // Store the conversion data and result in sessionStorage
       sessionStorage.setItem("conversionData", JSON.stringify({
         fileName: file.name,
         fileSize: file.size,
         ...data,
         timestamp: new Date().toISOString(),
+        result: result
       }));
+      
+      toast.dismiss();
+      toast.success("Conversion process completed successfully");
       
       // Navigate to results page
       navigate("/results");
-    }, 2000);
+    } catch (error) {
+      toast.dismiss();
+      toast.error("An error occurred during conversion");
+      console.error("Conversion error:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
   
   return (

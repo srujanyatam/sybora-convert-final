@@ -13,37 +13,93 @@ import {
 } from "@/components/ui/form";
 import { toast } from "sonner";
 import FileUploader from "./FileUploader";
-import { useNavigate } from "react-router-dom";
 import { ArrowRight, Check, Download } from "lucide-react";
-import { convertDatabase, generateOracleSchemaFile } from "@/lib/conversion";
+import { Textarea } from "@/components/ui/textarea";
 
 const FormSchema = z.object({
   sourceType: z.string().default("sybase"),
   targetType: z.string().default("oracle"),
+  sybaseCode: z.string().optional(),
 });
 
 const ConversionForm = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [convertedCode, setConvertedCode] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const [manualInput, setManualInput] = useState(false);
   
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
     defaultValues: {
       sourceType: "sybase",
       targetType: "oracle",
+      sybaseCode: "",
     },
   });
   
   const handleFileSelect = (selectedFile: File) => {
     setFile(selectedFile);
     setConvertedCode(null);
+    setManualInput(false);
+    form.setValue("sybaseCode", "");
+  };
+  
+  const handleManualInputToggle = () => {
+    setManualInput(!manualInput);
+    if (!manualInput) {
+      setFile(null);
+    } else {
+      form.setValue("sybaseCode", "");
+    }
+    setConvertedCode(null);
+  };
+  
+  const convertSybaseToOracle = (sybaseCode: string): string => {
+    // This is a simple example conversion logic
+    // In a real app, this would be more sophisticated or call a backend service
+    
+    // Detect if it's a stored procedure
+    if (sybaseCode.includes("CREATE PROCEDURE")) {
+      // Extract procedure name
+      const procedureNameMatch = sybaseCode.match(/CREATE\s+PROCEDURE\s+(\w+)/i);
+      const procedureName = procedureNameMatch ? procedureNameMatch[1] : "UnknownProcedure";
+      
+      // Basic conversion of Sybase procedure to Oracle
+      let oracleCode = sybaseCode
+        // Replace procedure declaration
+        .replace(/CREATE\s+PROCEDURE\s+(\w+)/i, "CREATE OR REPLACE PROCEDURE $1(EmployeeCount OUT NUMBER)")
+        // Add INTO clause for SELECTs that don't have it
+        .replace(/SELECT\s+COUNT\(\*\)\s+AS\s+(\w+)/i, "SELECT COUNT(*) INTO $1")
+        // Ensure there's a semicolon at the end of statements
+        .replace(/END$/i, "END;");
+      
+      return oracleCode;
+    }
+    
+    // If it's a table creation or other SQL
+    if (sybaseCode.includes("CREATE TABLE")) {
+      return sybaseCode
+        .replace(/\bdatetime\b/gi, "DATE")
+        .replace(/\bint\b/gi, "NUMBER(10)")
+        .replace(/\bvarchar\b/gi, "VARCHAR2")
+        .replace(/\bnumeric\s*\((\d+),\s*(\d+)\)/gi, "NUMBER($1,$2)")
+        .replace(/identity\(\d+,\s*\d+\)/gi, "")
+        .replace(/GO\s*$/gim, "/");
+    }
+    
+    // Default minimal conversion
+    return sybaseCode
+      .replace(/GO/g, "/")
+      .replace(/\bdatetime\b/gi, "DATE")
+      .replace(/\bint\b/gi, "NUMBER(10)")
+      .replace(/\bvarchar\b/gi, "VARCHAR2")
+      .replace(/\bnumeric\s*\((\d+),\s*(\d+)\)/gi, "NUMBER($1,$2)")
+      .replace(/END$/i, "END;");
   };
   
   const onSubmit = async (data: z.infer<typeof FormSchema>) => {
-    if (!file) {
-      toast.error("Please upload a database file");
+    if (!file && !data.sybaseCode) {
+      toast.error("Please upload a database file or enter Sybase code");
       return;
     }
     
@@ -51,25 +107,17 @@ const ConversionForm = () => {
     toast.loading("Converting Sybase to Oracle...");
     
     try {
-      // Process the conversion
-      const result = await convertDatabase(file, {
-        sourceType: data.sourceType,
-        targetType: data.targetType
-      });
+      let sybaseCode = data.sybaseCode || "";
       
-      // Generate Oracle schema file
-      const oracleCode = await generateOracleSchemaFile(file.name);
+      // If we have a file but no manual input, read the file
+      if (file && !manualInput) {
+        const text = await file.text();
+        sybaseCode = text;
+      }
+      
+      // Convert the Sybase code to Oracle
+      const oracleCode = convertSybaseToOracle(sybaseCode);
       setConvertedCode(oracleCode);
-      
-      // Store the conversion data and result in sessionStorage
-      sessionStorage.setItem("conversionData", JSON.stringify({
-        fileName: file.name,
-        fileSize: file.size,
-        ...data,
-        timestamp: new Date().toISOString(),
-        result: result,
-        oracleCode: oracleCode
-      }));
       
       toast.dismiss();
       toast.success("Sybase code successfully converted to Oracle");
@@ -93,7 +141,7 @@ const ConversionForm = () => {
     // Create a download link
     const a = document.createElement('a');
     a.href = url;
-    a.download = `oracle-converted-schema.sql`;
+    a.download = file ? `oracle-${file.name}` : `oracle-converted-code.sql`;
     document.body.appendChild(a);
     a.click();
     
@@ -101,18 +149,65 @@ const ConversionForm = () => {
     URL.revokeObjectURL(url);
     document.body.removeChild(a);
     
-    toast.success("Oracle converted schema downloaded");
+    toast.success("Oracle converted code downloaded");
   };
   
   return (
     <div className="w-full max-w-3xl mx-auto">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <div className="flex items-center gap-2 justify-end mb-2">
+            <span className="text-sm text-muted-foreground">Manual Input:</span>
+            <Button 
+              type="button" 
+              variant="outline" 
+              size="sm"
+              onClick={handleManualInputToggle}
+              className={manualInput ? "bg-primary text-primary-foreground" : ""}
+            >
+              {manualInput ? "Enabled" : "Disabled"}
+            </Button>
+          </div>
+          
           <div className="grid gap-4 py-4">
-            <div className="mb-4">
-              <h3 className="text-lg font-medium mb-2">Upload Sybase Database File</h3>
-              <FileUploader onFileSelect={handleFileSelect} />
-            </div>
+            {!manualInput ? (
+              <div className="mb-4">
+                <h3 className="text-lg font-medium mb-2">Upload Sybase Database File</h3>
+                <FileUploader onFileSelect={handleFileSelect} />
+              </div>
+            ) : (
+              <div className="mb-4">
+                <h3 className="text-lg font-medium mb-2">Enter Sybase Code</h3>
+                <FormField
+                  control={form.control}
+                  name="sybaseCode"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Paste your Sybase code here..."
+                          className="font-mono h-40"
+                          {...field}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
+            
+            {convertedCode && (
+              <div className="mb-4">
+                <h3 className="text-lg font-medium mb-2">Converted Oracle Code</h3>
+                <div className="relative">
+                  <Textarea
+                    value={convertedCode}
+                    readOnly
+                    className="font-mono h-40 bg-muted"
+                  />
+                </div>
+              </div>
+            )}
           </div>
           
           <div className="flex justify-center mt-6">
@@ -120,7 +215,7 @@ const ConversionForm = () => {
               <Button 
                 type="submit" 
                 className="w-full max-w-md rounded-full group"
-                disabled={isSubmitting || !file}
+                disabled={isSubmitting || (!file && !manualInput) || (manualInput && !form.getValues("sybaseCode"))}
               >
                 {isSubmitting ? (
                   <span className="inline-flex items-center">
@@ -148,11 +243,11 @@ const ConversionForm = () => {
             )}
           </div>
           
-          {!file && (
+          {!file && !manualInput && (
             <div className="text-center text-sm text-muted-foreground">
               <div className="flex items-center justify-center gap-1 text-primary">
                 <Check className="w-4 h-4" />
-                <span>Please upload a database file to continue</span>
+                <span>Please upload a database file or enable manual input</span>
               </div>
             </div>
           )}

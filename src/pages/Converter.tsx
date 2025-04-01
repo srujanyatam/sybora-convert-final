@@ -15,12 +15,12 @@ const Converter = () => {
             Database Converter
           </h1>
           <p className="text-muted-foreground max-w-[600px]">
-            Upload your Sybase database file and configure conversion options
+            Upload your database file for quick conversion
           </p>
         </div>
         
         <div className="flex justify-center">
-          <div className="w-full max-w-3xl p-6 bg-background rounded-lg border">
+          <div className="w-full max-w-2xl p-6 bg-background rounded-lg border">
             <ConversionForm />
           </div>
         </div>

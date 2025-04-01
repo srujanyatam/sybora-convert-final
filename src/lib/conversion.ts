@@ -4,15 +4,7 @@
 
 export interface ConversionOptions {
   sourceType: string;
-  sourceVersion: string;
   targetType: string;
-  targetVersion: string;
-  sourceCharset?: string;
-  targetCharset?: string;
-  validateData: boolean;
-  generateReport: boolean;
-  optimizeForLargeData: boolean;
-  preserveIdentifiers: boolean;
 }
 
 export interface ConversionResult {

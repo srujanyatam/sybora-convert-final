@@ -14,8 +14,8 @@ import {
 import { toast } from "sonner";
 import FileUploader from "./FileUploader";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Check } from "lucide-react";
-import { convertDatabase } from "@/lib/conversion";
+import { ArrowRight, Check, Download } from "lucide-react";
+import { convertDatabase, generateOracleSchemaFile } from "@/lib/conversion";
 
 const FormSchema = z.object({
   sourceType: z.string().default("sybase"),
@@ -25,6 +25,7 @@ const FormSchema = z.object({
 const ConversionForm = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [convertedCode, setConvertedCode] = useState<string | null>(null);
   const navigate = useNavigate();
   
   const form = useForm<z.infer<typeof FormSchema>>({
@@ -37,6 +38,7 @@ const ConversionForm = () => {
   
   const handleFileSelect = (selectedFile: File) => {
     setFile(selectedFile);
+    setConvertedCode(null);
   };
   
   const onSubmit = async (data: z.infer<typeof FormSchema>) => {
@@ -46,17 +48,18 @@ const ConversionForm = () => {
     }
     
     setIsSubmitting(true);
-    toast.loading("Processing your conversion request...");
+    toast.loading("Converting Sybase to Oracle...");
     
     try {
-      // Ensure that sourceType and targetType are required
-      const options = {
+      // Process the conversion
+      const result = await convertDatabase(file, {
         sourceType: data.sourceType,
         targetType: data.targetType
-      };
+      });
       
-      // Process the conversion
-      const result = await convertDatabase(file, options);
+      // Generate Oracle schema file
+      const oracleCode = await generateOracleSchemaFile(file.name);
+      setConvertedCode(oracleCode);
       
       // Store the conversion data and result in sessionStorage
       sessionStorage.setItem("conversionData", JSON.stringify({
@@ -64,14 +67,13 @@ const ConversionForm = () => {
         fileSize: file.size,
         ...data,
         timestamp: new Date().toISOString(),
-        result: result
+        result: result,
+        oracleCode: oracleCode
       }));
       
       toast.dismiss();
-      toast.success("Conversion process completed successfully");
+      toast.success("Sybase code successfully converted to Oracle");
       
-      // Navigate to results page
-      navigate("/results");
     } catch (error) {
       toast.dismiss();
       toast.error("An error occurred during conversion");
@@ -81,35 +83,69 @@ const ConversionForm = () => {
     }
   };
   
+  const handleDownload = () => {
+    if (!convertedCode) return;
+    
+    // Create a blob from the converted code
+    const blob = new Blob([convertedCode], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    
+    // Create a download link
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `oracle-converted-schema.sql`;
+    document.body.appendChild(a);
+    a.click();
+    
+    // Clean up
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    toast.success("Oracle converted schema downloaded");
+  };
+  
   return (
     <div className="w-full max-w-3xl mx-auto">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           <div className="grid gap-4 py-4">
             <div className="mb-4">
-              <h3 className="text-lg font-medium mb-2">Upload Database File</h3>
+              <h3 className="text-lg font-medium mb-2">Upload Sybase Database File</h3>
               <FileUploader onFileSelect={handleFileSelect} />
             </div>
           </div>
           
           <div className="flex justify-center mt-6">
-            <Button 
-              type="submit" 
-              className="w-full max-w-md rounded-full group"
-              disabled={isSubmitting || !file}
-            >
-              {isSubmitting ? (
+            {!convertedCode ? (
+              <Button 
+                type="submit" 
+                className="w-full max-w-md rounded-full group"
+                disabled={isSubmitting || !file}
+              >
+                {isSubmitting ? (
+                  <span className="inline-flex items-center">
+                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2"></div>
+                    Converting...
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center">
+                    Convert to Oracle
+                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  </span>
+                )}
+              </Button>
+            ) : (
+              <Button 
+                type="button"
+                onClick={handleDownload}
+                className="w-full max-w-md rounded-full group bg-green-600 hover:bg-green-700"
+              >
                 <span className="inline-flex items-center">
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2"></div>
-                  Processing...
+                  Download Oracle SQL File
+                  <Download className="ml-2 h-4 w-4 transition-transform group-hover:translate-y-1" />
                 </span>
-              ) : (
-                <span className="inline-flex items-center">
-                  Start Conversion
-                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
-                </span>
-              )}
-            </Button>
+              </Button>
+            )}
           </div>
           
           {!file && (

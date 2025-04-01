@@ -1,10 +1,9 @@
-
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Download, Check, FileText } from "lucide-react";
 import { toast } from "sonner";
-import { generateDownloadPackage } from "@/lib/conversion";
+import { generateDownloadFile, generateDownloadPackage } from "@/lib/conversion";
 
 interface ConversionData {
   fileName: string;
@@ -41,14 +40,18 @@ const Results = () => {
       // Generate a unique ID for the download
       const resultId = `${conversionData.sourceType}-to-${conversionData.targetType}-${Date.now()}`;
       
-      // Get the download package
-      const blob = await generateDownloadPackage(resultId);
+      // Get the specific file
+      const blob = await generateDownloadFile(fileType, resultId);
       
       // Create a download link
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${fileType.toLowerCase().replace(/\s+/g, '-')}.sql`;
+      
+      // Set the filename based on the file type
+      const filename = fileType.toLowerCase().replace(/\s+/g, '-') + '.sql';
+      a.download = filename.endsWith('.sql') ? filename : filename + '.txt';
+      
       document.body.appendChild(a);
       a.click();
       
@@ -77,7 +80,7 @@ const Results = () => {
       // Generate a unique ID for the download
       const resultId = `${conversionData.sourceType}-to-${conversionData.targetType}-${Date.now()}`;
       
-      // Get the download package
+      // Get the download package as a ZIP file
       const blob = await generateDownloadPackage(resultId);
       
       // Create a download link

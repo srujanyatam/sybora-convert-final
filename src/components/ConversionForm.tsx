@@ -49,8 +49,14 @@ const ConversionForm = () => {
     toast.loading("Processing your conversion request...");
     
     try {
+      // Ensure that sourceType and targetType are required
+      const options = {
+        sourceType: data.sourceType,
+        targetType: data.targetType
+      };
+      
       // Process the conversion
-      const result = await convertDatabase(file, data);
+      const result = await convertDatabase(file, options);
       
       // Store the conversion data and result in sessionStorage
       sessionStorage.setItem("conversionData", JSON.stringify({

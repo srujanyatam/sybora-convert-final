@@ -227,7 +227,6 @@ const ConversionForm = () => {
                     <ArrowDown className="ml-2 h-4 w-4" />
                   </h3>
                   
-                  {/* Download button moved to top right of comparison section */}
                   <Button 
                     type="button"
                     onClick={handleDownload}
@@ -241,7 +240,7 @@ const ConversionForm = () => {
                   </Button>
                 </div>
                 
-                {/* Performance Metrics in a more prominent position with improved styling */}
+                {/* Performance Metrics */}
                 {performanceMetrics && (
                   <div className="mb-4 p-4 border rounded-md bg-blue-50/30 shadow-sm">
                     <h4 className="text-md font-medium mb-2 text-blue-800">Performance Analysis</h4>
@@ -262,15 +261,16 @@ const ConversionForm = () => {
                   </div>
                 )}
                 
+                {/* Rearranged comparison view to have Oracle code first (higher up) */}
                 <ResizablePanelGroup
                   direction="vertical"
                   className="min-h-[400px] border rounded-md"
                 >
                   <ResizablePanel defaultSize={50}>
                     <div className="p-4">
-                      <h4 className="text-md font-medium mb-2">Original Sybase Code</h4>
+                      <h4 className="text-md font-medium mb-2">Converted Oracle Code</h4>
                       <Textarea
-                        value={originalCode}
+                        value={convertedCode}
                         readOnly
                         className="font-mono h-40 bg-muted"
                       />
@@ -279,9 +279,9 @@ const ConversionForm = () => {
                   <ResizableHandle withHandle />
                   <ResizablePanel defaultSize={50}>
                     <div className="p-4">
-                      <h4 className="text-md font-medium mb-2">Converted Oracle Code</h4>
+                      <h4 className="text-md font-medium mb-2">Original Sybase Code</h4>
                       <Textarea
-                        value={convertedCode}
+                        value={originalCode}
                         readOnly
                         className="font-mono h-40 bg-muted"
                       />

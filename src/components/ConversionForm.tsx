@@ -221,25 +221,40 @@ const ConversionForm = () => {
             
             {showComparison && convertedCode && (
               <div className="mb-4">
-                <h3 className="text-lg font-medium mb-2 flex items-center">
-                  Code Comparison
-                  <ArrowDown className="ml-2 h-4 w-4" />
-                </h3>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-lg font-medium flex items-center">
+                    Code Comparison
+                    <ArrowDown className="ml-2 h-4 w-4" />
+                  </h3>
+                  
+                  {/* Download button moved to top right of comparison section */}
+                  <Button 
+                    type="button"
+                    onClick={handleDownload}
+                    className="rounded-full group bg-green-600 hover:bg-green-700"
+                    size="sm"
+                  >
+                    <span className="inline-flex items-center">
+                      Download
+                      <Download className="ml-1 h-4 w-4 transition-transform group-hover:translate-y-1" />
+                    </span>
+                  </Button>
+                </div>
                 
-                {/* Move Performance Metrics to top of comparison section */}
+                {/* Performance Metrics in a more prominent position with improved styling */}
                 {performanceMetrics && (
-                  <div className="mb-4 p-4 border rounded-md bg-muted/30">
-                    <h4 className="text-md font-medium mb-2">Performance Metrics</h4>
+                  <div className="mb-4 p-4 border rounded-md bg-blue-50/30 shadow-sm">
+                    <h4 className="text-md font-medium mb-2 text-blue-800">Performance Analysis</h4>
                     <div className="grid grid-cols-3 gap-4">
-                      <div className="p-3 bg-background border rounded-md text-center">
+                      <div className="p-3 bg-white border rounded-md text-center shadow-sm">
                         <p className="text-sm text-muted-foreground">Original Complexity</p>
                         <p className="text-xl font-semibold">{performanceMetrics.originalComplexity}</p>
                       </div>
-                      <div className="p-3 bg-background border rounded-md text-center">
+                      <div className="p-3 bg-white border rounded-md text-center shadow-sm">
                         <p className="text-sm text-muted-foreground">Converted Complexity</p>
                         <p className="text-xl font-semibold">{performanceMetrics.convertedComplexity}</p>
                       </div>
-                      <div className="p-3 bg-background border rounded-md text-center">
+                      <div className="p-3 bg-white border rounded-md text-center shadow-sm">
                         <p className="text-sm text-muted-foreground">Improvement</p>
                         <p className="text-xl font-semibold text-green-600">{performanceMetrics.performanceImprovement}</p>
                       </div>
@@ -297,16 +312,19 @@ const ConversionForm = () => {
                 )}
               </Button>
             ) : (
-              <Button 
-                type="button"
-                onClick={handleDownload}
-                className="w-full max-w-md rounded-full group bg-green-600 hover:bg-green-700"
-              >
-                <span className="inline-flex items-center">
-                  Download Oracle SQL File
-                  <Download className="ml-2 h-4 w-4 transition-transform group-hover:translate-y-1" />
-                </span>
-              </Button>
+              /* Main download button only appears when no comparison is shown */
+              !showComparison && (
+                <Button 
+                  type="button"
+                  onClick={handleDownload}
+                  className="w-full max-w-md rounded-full group bg-green-600 hover:bg-green-700"
+                >
+                  <span className="inline-flex items-center">
+                    Download Oracle SQL File
+                    <Download className="ml-2 h-4 w-4 transition-transform group-hover:translate-y-1" />
+                  </span>
+                </Button>
+              )
             )}
           </div>
           

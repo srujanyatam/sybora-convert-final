@@ -225,6 +225,28 @@ const ConversionForm = () => {
                   Code Comparison
                   <ArrowDown className="ml-2 h-4 w-4" />
                 </h3>
+                
+                {/* Move Performance Metrics to top of comparison section */}
+                {performanceMetrics && (
+                  <div className="mb-4 p-4 border rounded-md bg-muted/30">
+                    <h4 className="text-md font-medium mb-2">Performance Metrics</h4>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-3 bg-background border rounded-md text-center">
+                        <p className="text-sm text-muted-foreground">Original Complexity</p>
+                        <p className="text-xl font-semibold">{performanceMetrics.originalComplexity}</p>
+                      </div>
+                      <div className="p-3 bg-background border rounded-md text-center">
+                        <p className="text-sm text-muted-foreground">Converted Complexity</p>
+                        <p className="text-xl font-semibold">{performanceMetrics.convertedComplexity}</p>
+                      </div>
+                      <div className="p-3 bg-background border rounded-md text-center">
+                        <p className="text-sm text-muted-foreground">Improvement</p>
+                        <p className="text-xl font-semibold text-green-600">{performanceMetrics.performanceImprovement}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
                 <ResizablePanelGroup
                   direction="vertical"
                   className="min-h-[400px] border rounded-md"
@@ -251,26 +273,6 @@ const ConversionForm = () => {
                     </div>
                   </ResizablePanel>
                 </ResizablePanelGroup>
-                
-                {performanceMetrics && (
-                  <div className="mt-4 p-4 border rounded-md bg-muted/30">
-                    <h4 className="text-md font-medium mb-2">Performance Metrics</h4>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="p-3 bg-background border rounded-md text-center">
-                        <p className="text-sm text-muted-foreground">Original Complexity</p>
-                        <p className="text-xl font-semibold">{performanceMetrics.originalComplexity}</p>
-                      </div>
-                      <div className="p-3 bg-background border rounded-md text-center">
-                        <p className="text-sm text-muted-foreground">Converted Complexity</p>
-                        <p className="text-xl font-semibold">{performanceMetrics.convertedComplexity}</p>
-                      </div>
-                      <div className="p-3 bg-background border rounded-md text-center">
-                        <p className="text-sm text-muted-foreground">Improvement</p>
-                        <p className="text-xl font-semibold text-green-600">{performanceMetrics.performanceImprovement}</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
           </div>

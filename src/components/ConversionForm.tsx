@@ -13,8 +13,14 @@ import {
 } from "@/components/ui/form";
 import { toast } from "sonner";
 import FileUploader from "./FileUploader";
-import { ArrowRight, Check, Download } from "lucide-react";
+import { ArrowRight, Check, Download, ArrowDown } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle
+} from "@/components/ui/resizable";
+import { calculatePerformanceMetrics } from "@/lib/conversionMetrics";
 
 const FormSchema = z.object({
   sourceType: z.string().default("sybase"),
@@ -27,6 +33,13 @@ const ConversionForm = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [convertedCode, setConvertedCode] = useState<string | null>(null);
   const [manualInput, setManualInput] = useState(false);
+  const [originalCode, setOriginalCode] = useState<string>("");
+  const [showComparison, setShowComparison] = useState(false);
+  const [performanceMetrics, setPerformanceMetrics] = useState<{
+    originalComplexity: number;
+    convertedComplexity: number;
+    performanceImprovement: string;
+  } | null>(null);
   
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
@@ -41,6 +54,7 @@ const ConversionForm = () => {
     setFile(selectedFile);
     setConvertedCode(null);
     setManualInput(false);
+    setShowComparison(false);
     form.setValue("sybaseCode", "");
   };
   
@@ -52,6 +66,7 @@ const ConversionForm = () => {
       form.setValue("sybaseCode", "");
     }
     setConvertedCode(null);
+    setShowComparison(false);
   };
   
   const convertSybaseToOracle = (sybaseCode: string): string => {
@@ -115,9 +130,17 @@ const ConversionForm = () => {
         sybaseCode = text;
       }
       
+      setOriginalCode(sybaseCode);
+      
       // Convert the Sybase code to Oracle
       const oracleCode = convertSybaseToOracle(sybaseCode);
       setConvertedCode(oracleCode);
+      
+      // Calculate performance metrics
+      const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
+      setPerformanceMetrics(metrics);
+      
+      setShowComparison(true);
       
       toast.dismiss();
       toast.success("Sybase code successfully converted to Oracle");
@@ -196,16 +219,58 @@ const ConversionForm = () => {
               </div>
             )}
             
-            {convertedCode && (
+            {showComparison && convertedCode && (
               <div className="mb-4">
-                <h3 className="text-lg font-medium mb-2">Converted Oracle Code</h3>
-                <div className="relative">
-                  <Textarea
-                    value={convertedCode}
-                    readOnly
-                    className="font-mono h-40 bg-muted"
-                  />
-                </div>
+                <h3 className="text-lg font-medium mb-2 flex items-center">
+                  Code Comparison
+                  <ArrowDown className="ml-2 h-4 w-4" />
+                </h3>
+                <ResizablePanelGroup
+                  direction="vertical"
+                  className="min-h-[400px] border rounded-md"
+                >
+                  <ResizablePanel defaultSize={50}>
+                    <div className="p-4">
+                      <h4 className="text-md font-medium mb-2">Original Sybase Code</h4>
+                      <Textarea
+                        value={originalCode}
+                        readOnly
+                        className="font-mono h-40 bg-muted"
+                      />
+                    </div>
+                  </ResizablePanel>
+                  <ResizableHandle withHandle />
+                  <ResizablePanel defaultSize={50}>
+                    <div className="p-4">
+                      <h4 className="text-md font-medium mb-2">Converted Oracle Code</h4>
+                      <Textarea
+                        value={convertedCode}
+                        readOnly
+                        className="font-mono h-40 bg-muted"
+                      />
+                    </div>
+                  </ResizablePanel>
+                </ResizablePanelGroup>
+                
+                {performanceMetrics && (
+                  <div className="mt-4 p-4 border rounded-md bg-muted/30">
+                    <h4 className="text-md font-medium mb-2">Performance Metrics</h4>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-3 bg-background border rounded-md text-center">
+                        <p className="text-sm text-muted-foreground">Original Complexity</p>
+                        <p className="text-xl font-semibold">{performanceMetrics.originalComplexity}</p>
+                      </div>
+                      <div className="p-3 bg-background border rounded-md text-center">
+                        <p className="text-sm text-muted-foreground">Converted Complexity</p>
+                        <p className="text-xl font-semibold">{performanceMetrics.convertedComplexity}</p>
+                      </div>
+                      <div className="p-3 bg-background border rounded-md text-center">
+                        <p className="text-sm text-muted-foreground">Improvement</p>
+                        <p className="text-xl font-semibold text-green-600">{performanceMetrics.performanceImprovement}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

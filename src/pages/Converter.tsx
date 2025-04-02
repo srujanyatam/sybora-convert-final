@@ -20,7 +20,7 @@ const Converter = () => {
         </div>
         
         <div className="flex justify-center">
-          <div className="w-full max-w-4xl p-6 bg-background rounded-lg border">
+          <div className="w-full max-w-4xl p-6 bg-background rounded-lg border shadow-sm">
             <ConversionForm />
           </div>
         </div>

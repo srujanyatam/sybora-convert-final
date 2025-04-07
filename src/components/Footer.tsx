@@ -1,5 +1,4 @@
 
-import { Link } from "react-router-dom";
 import { Database } from "lucide-react";
 
 const Footer = () => {
@@ -12,20 +11,8 @@ const Footer = () => {
         </div>
         
         <p className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} DB Migrate. Python-powered database migration.
+          Python-powered database migration
         </p>
-        
-        <nav className="flex gap-4">
-          <Link to="/" className="text-xs text-muted-foreground hover:text-primary">
-            Home
-          </Link>
-          <Link to="/features" className="text-xs text-muted-foreground hover:text-primary">
-            Features
-          </Link>
-          <Link to="/converter" className="text-xs text-muted-foreground hover:text-primary">
-            Converter
-          </Link>
-        </nav>
       </div>
     </footer>
   );

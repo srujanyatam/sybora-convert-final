@@ -3,11 +3,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import Index from "./pages/Index";
 import Converter from "./pages/Converter";
-import Features from "./pages/Features";
 import Results from "./pages/Results";
 import NotFound from "./pages/NotFound";
 import Header from "./components/Header";
@@ -44,9 +42,8 @@ const App = () => {
             <Header />
             <main className="flex-grow">
               <Routes>
-                <Route path="/" element={<Index />} />
+                <Route path="/" element={<Navigate to="/converter" replace />} />
                 <Route path="/converter" element={<Converter />} />
-                <Route path="/features" element={<Features />} />
                 <Route path="/results" element={<Results />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

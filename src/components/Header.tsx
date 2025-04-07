@@ -1,6 +1,5 @@
 
 import { Link, useLocation } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { Database } from "lucide-react";
 
 const Header = () => {
@@ -15,14 +14,6 @@ const Header = () => {
         </Link>
         
         <nav className="ml-auto flex gap-4 md:gap-6 items-center">
-          <Link 
-            to="/features" 
-            className={`text-sm transition-colors hover:text-primary ${
-              location.pathname === "/features" ? "text-primary font-medium" : "text-foreground/70"
-            }`}
-          >
-            Features
-          </Link>
           <Link 
             to="/converter" 
             className={`text-sm transition-colors hover:text-primary ${

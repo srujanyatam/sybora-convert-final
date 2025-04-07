@@ -16,14 +16,6 @@ const Header = () => {
         
         <nav className="ml-auto flex gap-4 md:gap-6 items-center">
           <Link 
-            to="/" 
-            className={`text-sm transition-colors hover:text-primary ${
-              location.pathname === "/" ? "text-primary font-medium" : "text-foreground/70"
-            }`}
-          >
-            Home
-          </Link>
-          <Link 
             to="/features" 
             className={`text-sm transition-colors hover:text-primary ${
               location.pathname === "/features" ? "text-primary font-medium" : "text-foreground/70"
@@ -38,12 +30,6 @@ const Header = () => {
             }`}
           >
             Converter
-          </Link>
-          
-          <Link to="/converter">
-            <Button size="sm">
-              Start
-            </Button>
           </Link>
         </nav>
       </div>

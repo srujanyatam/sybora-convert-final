@@ -21,6 +21,7 @@ import {
   ResizableHandle
 } from "@/components/ui/resizable";
 import { calculatePerformanceMetrics } from "@/lib/conversionMetrics";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const FormSchema = z.object({
   sourceType: z.string().default("sybase"),
@@ -28,18 +29,24 @@ const FormSchema = z.object({
   sybaseCode: z.string().optional(),
 });
 
-const ConversionForm = () => {
-  const [file, setFile] = useState<File | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [convertedCode, setConvertedCode] = useState<string | null>(null);
-  const [manualInput, setManualInput] = useState(false);
-  const [originalCode, setOriginalCode] = useState<string>("");
-  const [showComparison, setShowComparison] = useState(false);
-  const [performanceMetrics, setPerformanceMetrics] = useState<{
+interface ConversionResult {
+  originalCode: string;
+  convertedCode: string;
+  fileName: string;
+  performanceMetrics: {
     originalComplexity: number;
     convertedComplexity: number;
     performanceImprovement: string;
-  } | null>(null);
+  };
+}
+
+const ConversionForm = () => {
+  const [files, setFiles] = useState<File[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [manualInput, setManualInput] = useState(false);
+  const [conversionResults, setConversionResults] = useState<ConversionResult[]>([]);
+  const [selectedResultIndex, setSelectedResultIndex] = useState<number>(0);
+  const [showUploader, setShowUploader] = useState(true);
   
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
@@ -50,32 +57,36 @@ const ConversionForm = () => {
     },
   });
   
-  const handleFileSelect = (selectedFile: File) => {
-    setFile(selectedFile);
-    setConvertedCode(null);
+  const handleFileSelect = (selectedFiles: File[]) => {
+    setFiles(selectedFiles);
+    setConversionResults([]);
     setManualInput(false);
-    setShowComparison(false);
     form.setValue("sybaseCode", "");
+    
+    if (selectedFiles.length > 0) {
+      setShowUploader(false);
+    } else {
+      setShowUploader(true);
+    }
   };
   
   const handleManualInputToggle = () => {
     setManualInput(!manualInput);
     if (!manualInput) {
-      setFile(null);
+      setFiles([]);
     } else {
       form.setValue("sybaseCode", "");
     }
-    setConvertedCode(null);
-    setShowComparison(false);
+    setConversionResults([]);
+    setShowUploader(manualInput);
   };
   
   const handleReset = () => {
-    setFile(null);
-    setConvertedCode(null);
+    setFiles([]);
+    setConversionResults([]);
     setManualInput(false);
-    setShowComparison(false);
-    setOriginalCode("");
-    setPerformanceMetrics(null);
+    setSelectedResultIndex(0);
+    setShowUploader(true);
     form.reset({
       sourceType: "sybase",
       targetType: "oracle",
@@ -128,7 +139,7 @@ const ConversionForm = () => {
   };
   
   const onSubmit = async (data: z.infer<typeof FormSchema>) => {
-    if (!file && !data.sybaseCode) {
+    if (files.length === 0 && !data.sybaseCode) {
       toast.error("Please upload a database file or enter Sybase code");
       return;
     }
@@ -137,30 +148,47 @@ const ConversionForm = () => {
     toast.loading("Converting Sybase to Oracle...");
     
     try {
-      let sybaseCode = data.sybaseCode || "";
+      const results: ConversionResult[] = [];
       
-      // If we have a file but no manual input, read the file
-      if (file && !manualInput) {
-        const text = await file.text();
-        sybaseCode = text;
-        // Update the textarea with file content for better UX
-        form.setValue("sybaseCode", text);
+      // If we have files to process
+      if (files.length > 0 && !manualInput) {
+        for (const file of files) {
+          const text = await file.text();
+          // Convert the Sybase code to Oracle
+          const oracleCode = convertSybaseToOracle(text);
+          
+          // Calculate performance metrics
+          const metrics = calculatePerformanceMetrics(text, oracleCode);
+          
+          results.push({
+            originalCode: text,
+            convertedCode: oracleCode,
+            fileName: file.name,
+            performanceMetrics: metrics
+          });
+        }
+      } 
+      // If we have manual input
+      else if (data.sybaseCode) {
+        const sybaseCode = data.sybaseCode;
+        const oracleCode = convertSybaseToOracle(sybaseCode);
+        
+        // Calculate performance metrics
+        const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
+        
+        results.push({
+          originalCode: sybaseCode,
+          convertedCode: oracleCode,
+          fileName: 'Manual Input',
+          performanceMetrics: metrics
+        });
       }
       
-      setOriginalCode(sybaseCode);
-      
-      // Convert the Sybase code to Oracle
-      const oracleCode = convertSybaseToOracle(sybaseCode);
-      setConvertedCode(oracleCode);
-      
-      // Calculate performance metrics
-      const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
-      setPerformanceMetrics(metrics);
-      
-      setShowComparison(true);
+      setConversionResults(results);
+      setSelectedResultIndex(0);
       
       toast.dismiss();
-      toast.success("Sybase code successfully converted to Oracle");
+      toast.success(`${results.length} file(s) successfully converted to Oracle`);
       
     } catch (error) {
       toast.dismiss();
@@ -171,17 +199,19 @@ const ConversionForm = () => {
     }
   };
   
-  const handleDownload = () => {
-    if (!convertedCode) return;
+  const handleDownload = (index: number) => {
+    if (!conversionResults[index]) return;
     
     // Create a blob from the converted code
-    const blob = new Blob([convertedCode], { type: 'text/plain' });
+    const blob = new Blob([conversionResults[index].convertedCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     
     // Create a download link
     const a = document.createElement('a');
     a.href = url;
-    a.download = file ? `oracle-${file.name}` : `oracle-converted-code.sql`;
+    a.download = conversionResults[index].fileName.includes('.') ? 
+      `oracle-${conversionResults[index].fileName}` : 
+      `oracle-${conversionResults[index].fileName}.sql`;
     document.body.appendChild(a);
     a.click();
     
@@ -206,17 +236,21 @@ const ConversionForm = () => {
     
     try {
       const sybaseCode = data.sybaseCode;
-      setOriginalCode(sybaseCode);
       
       // Convert the Sybase code to Oracle
       const oracleCode = convertSybaseToOracle(sybaseCode);
-      setConvertedCode(oracleCode);
       
       // Calculate performance metrics
       const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
-      setPerformanceMetrics(metrics);
       
-      setShowComparison(true);
+      setConversionResults([{
+        originalCode: sybaseCode,
+        convertedCode: oracleCode,
+        fileName: 'Quick Convert',
+        performanceMetrics: metrics
+      }]);
+      
+      setSelectedResultIndex(0);
       
       toast.dismiss();
       toast.success("Sybase code successfully converted to Oracle");
@@ -261,12 +295,42 @@ const ConversionForm = () => {
           </div>
           
           <div className="grid gap-4 py-4">
-            {!manualInput ? (
+            {showUploader && !manualInput ? (
               <div className="mb-4">
-                <h3 className="text-lg font-medium mb-2">Upload Sybase Database File</h3>
-                <FileUploader onFileSelect={handleFileSelect} />
+                <h3 className="text-lg font-medium mb-2">Upload Sybase Database Files</h3>
+                <FileUploader 
+                  onFileSelect={handleFileSelect} 
+                  multiple={true}
+                />
               </div>
-            ) : (
+            ) : !manualInput && files.length > 0 ? (
+              <div className="mb-4">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-medium">Uploaded Files ({files.length})</h3>
+                  <Button 
+                    type="button" 
+                    variant="secondary" 
+                    size="sm"
+                    onClick={() => setShowUploader(true)}
+                  >
+                    Change Files
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  {files.map((file, index) => (
+                    <div key={index} className="bg-secondary/30 p-3 rounded-md flex justify-between items-center">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-primary" />
+                        <span className="text-sm font-medium">{file.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({(file.size / 1024 / 1024).toFixed(2)} MB)
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : manualInput && (
               <div className="mb-4">
                 <h3 className="text-lg font-medium mb-2">Enter Sybase Code</h3>
                 <FormField
@@ -297,44 +361,60 @@ const ConversionForm = () => {
               </div>
             )}
             
-            {showComparison && convertedCode && (
+            {conversionResults.length > 0 && (
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-lg font-medium flex items-center">
-                    Code Comparison
-                    <ArrowDown className="ml-2 h-4 w-4" />
+                    Conversion Results
                   </h3>
-                  
-                  {/* Download button moved to top right of comparison section */}
-                  <Button 
-                    type="button"
-                    onClick={handleDownload}
-                    className="rounded-full group bg-green-600 hover:bg-green-700"
-                    size="sm"
-                  >
-                    <span className="inline-flex items-center">
-                      Download
-                      <Download className="ml-1 h-4 w-4 transition-transform group-hover:translate-y-1" />
-                    </span>
-                  </Button>
                 </div>
                 
-                {/* Performance Metrics in a more prominent position with improved styling */}
-                {performanceMetrics && (
+                {conversionResults.length > 1 && (
+                  <Tabs
+                    defaultValue="0"
+                    value={selectedResultIndex.toString()}
+                    onValueChange={(value) => setSelectedResultIndex(parseInt(value))}
+                    className="mb-4"
+                  >
+                    <TabsList className="w-full overflow-x-auto">
+                      {conversionResults.map((result, index) => (
+                        <TabsTrigger key={index} value={index.toString()} className="text-xs">
+                          {result.fileName}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </Tabs>
+                )}
+                
+                {/* Performance Metrics for currently selected file */}
+                {conversionResults[selectedResultIndex] && (
                   <div className="mb-4 p-4 border rounded-md bg-blue-50/30 shadow-sm">
-                    <h4 className="text-md font-medium mb-2 text-blue-800">Performance Analysis</h4>
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-md font-medium text-blue-800">Performance Analysis</h4>
+                      <Button 
+                        type="button"
+                        onClick={() => handleDownload(selectedResultIndex)}
+                        className="rounded-full group bg-green-600 hover:bg-green-700"
+                        size="sm"
+                      >
+                        <span className="inline-flex items-center">
+                          Download
+                          <Download className="ml-1 h-4 w-4 transition-transform group-hover:translate-y-1" />
+                        </span>
+                      </Button>
+                    </div>
                     <div className="grid grid-cols-3 gap-4">
                       <div className="p-3 bg-white border rounded-md text-center shadow-sm">
                         <p className="text-sm text-muted-foreground">Original Complexity</p>
-                        <p className="text-xl font-semibold">{performanceMetrics.originalComplexity}</p>
+                        <p className="text-xl font-semibold">{conversionResults[selectedResultIndex].performanceMetrics.originalComplexity}</p>
                       </div>
                       <div className="p-3 bg-white border rounded-md text-center shadow-sm">
                         <p className="text-sm text-muted-foreground">Converted Complexity</p>
-                        <p className="text-xl font-semibold">{performanceMetrics.convertedComplexity}</p>
+                        <p className="text-xl font-semibold">{conversionResults[selectedResultIndex].performanceMetrics.convertedComplexity}</p>
                       </div>
                       <div className="p-3 bg-white border rounded-md text-center shadow-sm">
                         <p className="text-sm text-muted-foreground">Improvement</p>
-                        <p className="text-xl font-semibold text-green-600">{performanceMetrics.performanceImprovement}</p>
+                        <p className="text-xl font-semibold text-green-600">{conversionResults[selectedResultIndex].performanceMetrics.performanceImprovement}</p>
                       </div>
                     </div>
                   </div>
@@ -348,7 +428,7 @@ const ConversionForm = () => {
                     <div className="p-4">
                       <h4 className="text-md font-medium mb-2">Original Sybase Code</h4>
                       <Textarea
-                        value={originalCode}
+                        value={conversionResults[selectedResultIndex]?.originalCode || ''}
                         readOnly
                         className="font-mono h-40 bg-muted"
                       />
@@ -359,7 +439,7 @@ const ConversionForm = () => {
                     <div className="p-4">
                       <h4 className="text-md font-medium mb-2">Converted Oracle Code</h4>
                       <Textarea
-                        value={convertedCode}
+                        value={conversionResults[selectedResultIndex]?.convertedCode || ''}
                         readOnly
                         className="font-mono h-40 bg-muted"
                       />
@@ -371,11 +451,11 @@ const ConversionForm = () => {
           </div>
           
           <div className="flex justify-center mt-6">
-            {!convertedCode ? (
+            {conversionResults.length === 0 ? (
               <Button 
                 type="submit" 
                 className="w-full max-w-md rounded-full group"
-                disabled={isSubmitting || (!file && !manualInput) || (manualInput && !form.getValues("sybaseCode"))}
+                disabled={isSubmitting || (files.length === 0 && !manualInput) || (manualInput && !form.getValues("sybaseCode"))}
               >
                 {isSubmitting ? (
                   <span className="inline-flex items-center">
@@ -390,15 +470,14 @@ const ConversionForm = () => {
                 )}
               </Button>
             ) : (
-              /* Main download button only appears when no comparison is shown */
-              !showComparison && (
+              conversionResults.length > 1 && (
                 <Button 
                   type="button"
-                  onClick={handleDownload}
+                  onClick={() => handleDownload(selectedResultIndex)}
                   className="w-full max-w-md rounded-full group bg-green-600 hover:bg-green-700"
                 >
                   <span className="inline-flex items-center">
-                    Download Oracle SQL File
+                    Download Current Oracle SQL File
                     <Download className="ml-2 h-4 w-4 transition-transform group-hover:translate-y-1" />
                   </span>
                 </Button>
@@ -406,7 +485,7 @@ const ConversionForm = () => {
             )}
           </div>
           
-          {!file && !manualInput && (
+          {files.length === 0 && !manualInput && (
             <div className="text-center text-sm text-muted-foreground">
               <div className="flex items-center justify-center gap-1 text-primary">
                 <Check className="w-4 h-4" />

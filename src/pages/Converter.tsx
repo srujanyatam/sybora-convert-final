@@ -15,7 +15,7 @@ const Converter = () => {
             Database Converter
           </h1>
           <p className="text-muted-foreground max-w-[600px]">
-            Upload your database file for quick conversion with side-by-side comparison
+            Upload your database files for quick conversion with side-by-side comparison
           </p>
         </div>
         

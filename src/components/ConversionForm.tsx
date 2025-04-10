@@ -1,4 +1,3 @@
-
 import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -96,28 +95,18 @@ const ConversionForm = () => {
   };
   
   const convertSybaseToOracle = (sybaseCode: string): string => {
-    // This is a simple example conversion logic
-    // In a real app, this would be more sophisticated or call a backend service
-    
-    // Detect if it's a stored procedure
     if (sybaseCode.includes("CREATE PROCEDURE")) {
-      // Extract procedure name
       const procedureNameMatch = sybaseCode.match(/CREATE\s+PROCEDURE\s+(\w+)/i);
       const procedureName = procedureNameMatch ? procedureNameMatch[1] : "UnknownProcedure";
       
-      // Basic conversion of Sybase procedure to Oracle
       let oracleCode = sybaseCode
-        // Replace procedure declaration
         .replace(/CREATE\s+PROCEDURE\s+(\w+)/i, "CREATE OR REPLACE PROCEDURE $1(EmployeeCount OUT NUMBER)")
-        // Add INTO clause for SELECTs that don't have it
         .replace(/SELECT\s+COUNT\(\*\)\s+AS\s+(\w+)/i, "SELECT COUNT(*) INTO $1")
-        // Ensure there's a semicolon at the end of statements
         .replace(/END$/i, "END;");
       
       return oracleCode;
     }
     
-    // If it's a table creation or other SQL
     if (sybaseCode.includes("CREATE TABLE")) {
       return sybaseCode
         .replace(/\bdatetime\b/gi, "DATE")
@@ -128,7 +117,6 @@ const ConversionForm = () => {
         .replace(/GO\s*$/gim, "/");
     }
     
-    // Default minimal conversion
     return sybaseCode
       .replace(/GO/g, "/")
       .replace(/\bdatetime\b/gi, "DATE")
@@ -150,14 +138,11 @@ const ConversionForm = () => {
     try {
       const results: ConversionResult[] = [];
       
-      // If we have files to process
       if (files.length > 0 && !manualInput) {
         for (const file of files) {
           const text = await file.text();
-          // Convert the Sybase code to Oracle
           const oracleCode = convertSybaseToOracle(text);
           
-          // Calculate performance metrics
           const metrics = calculatePerformanceMetrics(text, oracleCode);
           
           results.push({
@@ -167,13 +152,10 @@ const ConversionForm = () => {
             performanceMetrics: metrics
           });
         }
-      } 
-      // If we have manual input
-      else if (data.sybaseCode) {
+      } else if (data.sybaseCode) {
         const sybaseCode = data.sybaseCode;
         const oracleCode = convertSybaseToOracle(sybaseCode);
         
-        // Calculate performance metrics
         const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
         
         results.push({
@@ -202,11 +184,9 @@ const ConversionForm = () => {
   const handleDownload = (index: number) => {
     if (!conversionResults[index]) return;
     
-    // Create a blob from the converted code
     const blob = new Blob([conversionResults[index].convertedCode], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     
-    // Create a download link
     const a = document.createElement('a');
     a.href = url;
     a.download = conversionResults[index].fileName.includes('.') ? 
@@ -215,7 +195,6 @@ const ConversionForm = () => {
     document.body.appendChild(a);
     a.click();
     
-    // Clean up
     URL.revokeObjectURL(url);
     document.body.removeChild(a);
     
@@ -223,7 +202,6 @@ const ConversionForm = () => {
   };
   
   const handleQuickConvert = async () => {
-    // This function quickly converts any sample code or pasted code
     const data = form.getValues();
     if (!data.sybaseCode) {
       toast.error("Please enter some Sybase code to convert");
@@ -237,10 +215,8 @@ const ConversionForm = () => {
     try {
       const sybaseCode = data.sybaseCode;
       
-      // Convert the Sybase code to Oracle
       const oracleCode = convertSybaseToOracle(sybaseCode);
       
-      // Calculate performance metrics
       const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
       
       setConversionResults([{
@@ -348,7 +324,6 @@ const ConversionForm = () => {
                     </FormItem>
                   )}
                 />
-                {/* Quick Convert button for direct code conversion */}
                 <Button
                   type="button"
                   variant="secondary"
@@ -364,7 +339,7 @@ const ConversionForm = () => {
             {conversionResults.length > 0 && (
               <div className="mb-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-lg font-medium flex items-center">
+                  <h3 className="text-xl font-medium flex items-center">
                     Conversion Results
                   </h3>
                 </div>
@@ -376,9 +351,13 @@ const ConversionForm = () => {
                     onValueChange={(value) => setSelectedResultIndex(parseInt(value))}
                     className="mb-4"
                   >
-                    <TabsList className="w-full overflow-x-auto">
+                    <TabsList className="w-full overflow-x-auto flex">
                       {conversionResults.map((result, index) => (
-                        <TabsTrigger key={index} value={index.toString()} className="text-xs">
+                        <TabsTrigger 
+                          key={index} 
+                          value={index.toString()} 
+                          className="text-sm md:text-base font-medium px-4 py-2"
+                        >
                           {result.fileName}
                         </TabsTrigger>
                       ))}
@@ -386,11 +365,10 @@ const ConversionForm = () => {
                   </Tabs>
                 )}
                 
-                {/* Performance Metrics for currently selected file */}
                 {conversionResults[selectedResultIndex] && (
                   <div className="mb-4 p-4 border rounded-md bg-blue-50/30 shadow-sm">
                     <div className="flex justify-between items-center mb-2">
-                      <h4 className="text-md font-medium text-blue-800">Performance Analysis</h4>
+                      <h4 className="text-lg font-medium text-blue-800">Performance Analysis</h4>
                       <Button 
                         type="button"
                         onClick={() => handleDownload(selectedResultIndex)}
@@ -426,7 +404,7 @@ const ConversionForm = () => {
                 >
                   <ResizablePanel defaultSize={50}>
                     <div className="p-4">
-                      <h4 className="text-md font-medium mb-2">Original Sybase Code</h4>
+                      <h4 className="text-lg font-medium mb-2">Original Sybase Code</h4>
                       <Textarea
                         value={conversionResults[selectedResultIndex]?.originalCode || ''}
                         readOnly
@@ -437,7 +415,7 @@ const ConversionForm = () => {
                   <ResizableHandle withHandle />
                   <ResizablePanel defaultSize={50}>
                     <div className="p-4">
-                      <h4 className="text-md font-medium mb-2">Converted Oracle Code</h4>
+                      <h4 className="text-lg font-medium mb-2">Converted Oracle Code</h4>
                       <Textarea
                         value={conversionResults[selectedResultIndex]?.convertedCode || ''}
                         readOnly

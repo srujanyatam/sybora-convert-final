@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -111,10 +112,10 @@ const Results = () => {
       <div className="flex flex-col min-h-screen py-12">
         <div className="container px-4 md:px-6">
           <div className="flex flex-col items-center justify-center">
-            <h2 className="text-2xl font-bold mb-4">No Conversion Data Found</h2>
-            <p className="text-muted-foreground mb-6">Please start a new conversion to see results.</p>
+            <h2 className="text-3xl font-bold mb-4">No Conversion Data Found</h2>
+            <p className="text-lg text-muted-foreground mb-6">Please start a new conversion to see results.</p>
             <Link to="/converter">
-              <Button>Start New Conversion</Button>
+              <Button size="lg" className="text-base">Start New Conversion</Button>
             </Link>
           </div>
         </div>
@@ -126,68 +127,68 @@ const Results = () => {
     <div className="flex flex-col min-h-screen py-12">
       <div className="container px-4 md:px-6">
         <div className="flex flex-col items-center justify-center mb-12 text-center">
-          <div className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-primary/10 text-primary mb-4">
+          <div className="inline-flex items-center rounded-full px-4 py-1.5 text-base font-medium bg-primary/10 text-primary mb-4">
             <span className="font-medium">Conversion Results</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-tighter md:text-4xl mb-4">
+          <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold tracking-tighter mb-4">
             Your Database Conversion is Complete
           </h1>
-          <p className="text-muted-foreground md:text-xl max-w-[800px]">
+          <p className="text-lg md:text-xl max-w-[800px] text-muted-foreground">
             Review your conversion results and download your Oracle-ready database files.
           </p>
         </div>
         
         <div className="w-full max-w-4xl mx-auto p-8 bg-white rounded-xl shadow-sm">
           <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-4 p-4 bg-green-50 rounded-lg">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <Check className="w-6 h-6 text-green-600" />
+            <div className="flex items-center gap-4 p-5 bg-green-50 rounded-lg">
+              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+                <Check className="w-7 h-7 text-green-600" />
               </div>
               <div>
-                <h3 className="font-medium">Conversion Successful</h3>
-                <p className="text-sm text-muted-foreground">All database objects were successfully converted</p>
+                <h3 className="text-xl font-medium">Conversion Successful</h3>
+                <p className="text-base text-muted-foreground">All database objects were successfully converted</p>
               </div>
             </div>
             
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="p-4 border rounded-lg">
-                <h3 className="font-medium mb-2">Schema Objects</h3>
-                <ul className="space-y-2 text-sm">
-                  <li className="flex justify-between">
+              <div className="p-5 border rounded-lg">
+                <h3 className="text-lg font-medium mb-3">Schema Objects</h3>
+                <ul className="space-y-3">
+                  <li className="flex justify-between text-base">
                     <span>Tables</span>
                     <span className="font-medium">24 converted</span>
                   </li>
-                  <li className="flex justify-between">
+                  <li className="flex justify-between text-base">
                     <span>Views</span>
                     <span className="font-medium">8 converted</span>
                   </li>
-                  <li className="flex justify-between">
+                  <li className="flex justify-between text-base">
                     <span>Stored Procedures</span>
                     <span className="font-medium">12 converted</span>
                   </li>
-                  <li className="flex justify-between">
+                  <li className="flex justify-between text-base">
                     <span>Triggers</span>
                     <span className="font-medium">6 converted</span>
                   </li>
                 </ul>
               </div>
               
-              <div className="p-4 border rounded-lg">
-                <h3 className="font-medium mb-2">Data Migration</h3>
-                <ul className="space-y-2 text-sm">
-                  <li className="flex justify-between">
+              <div className="p-5 border rounded-lg">
+                <h3 className="text-lg font-medium mb-3">Data Migration</h3>
+                <ul className="space-y-3">
+                  <li className="flex justify-between text-base">
                     <span>Total Records</span>
                     <span className="font-medium">142,856</span>
                   </li>
-                  <li className="flex justify-between">
+                  <li className="flex justify-between text-base">
                     <span>Data Size</span>
                     <span className="font-medium">256 MB</span>
                   </li>
-                  <li className="flex justify-between">
+                  <li className="flex justify-between text-base">
                     <span>Migration Time</span>
                     <span className="font-medium">1m 24s</span>
                   </li>
-                  <li className="flex justify-between">
+                  <li className="flex justify-between text-base">
                     <span>Validation Status</span>
                     <span className="text-green-600 font-medium">Passed</span>
                   </li>
@@ -196,47 +197,47 @@ const Results = () => {
             </div>
             
             <div className="flex flex-col gap-4 mt-4">
-              <h3 className="font-medium">Download Files</h3>
+              <h3 className="text-xl font-medium">Download Files</h3>
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Button 
                   variant="outline" 
-                  className="justify-start gap-2"
+                  className="justify-start gap-2 text-base py-6"
                   onClick={() => handleDownload("Oracle Schema Scripts")}
                   disabled={isDownloading}
                 >
-                  <FileText className="w-4 h-4" />
+                  <FileText className="w-5 h-5" />
                   Oracle Schema Scripts
-                  <Download className="w-4 h-4 ml-auto" />
+                  <Download className="w-5 h-5 ml-auto" />
                 </Button>
                 <Button 
                   variant="outline" 
-                  className="justify-start gap-2"
+                  className="justify-start gap-2 text-base py-6"
                   onClick={() => handleDownload("Data Export Files")}
                   disabled={isDownloading}
                 >
-                  <FileText className="w-4 h-4" />
+                  <FileText className="w-5 h-5" />
                   Data Export Files
-                  <Download className="w-4 h-4 ml-auto" />
+                  <Download className="w-5 h-5 ml-auto" />
                 </Button>
                 <Button 
                   variant="outline" 
-                  className="justify-start gap-2"
+                  className="justify-start gap-2 text-base py-6"
                   onClick={() => handleDownload("Conversion Report")}
                   disabled={isDownloading}
                 >
-                  <FileText className="w-4 h-4" />
+                  <FileText className="w-5 h-5" />
                   Conversion Report
-                  <Download className="w-4 h-4 ml-auto" />
+                  <Download className="w-5 h-5 ml-auto" />
                 </Button>
                 <Button 
                   variant="outline" 
-                  className="justify-start gap-2"
+                  className="justify-start gap-2 text-base py-6"
                   onClick={() => handleDownload("Validation Summary")}
                   disabled={isDownloading}
                 >
-                  <FileText className="w-4 h-4" />
+                  <FileText className="w-5 h-5" />
                   Validation Summary
-                  <Download className="w-4 h-4 ml-auto" />
+                  <Download className="w-5 h-5 ml-auto" />
                 </Button>
               </div>
             </div>
@@ -244,14 +245,16 @@ const Results = () => {
           
           <div className="flex justify-between mt-8 pt-6 border-t">
             <Link to="/converter">
-              <Button variant="outline" className="gap-2">
-                <ArrowLeft className="w-4 h-4" />
+              <Button variant="outline" size="lg" className="gap-2 text-base">
+                <ArrowLeft className="w-5 h-5" />
                 Back to Converter
               </Button>
             </Link>
             <Button 
               onClick={handleDownloadAll}
               disabled={isDownloading}
+              size="lg"
+              className="text-base"
             >
               Download All Files
             </Button>

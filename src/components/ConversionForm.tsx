@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/form";
 import { toast } from "sonner";
 import FileUploader from "./FileUploader";
-import { ArrowRight, Check, Download, ArrowDown, RotateCcw } from "lucide-react";
+import { ArrowRight, Check, Download, RotateCcw, FileText } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ResizablePanelGroup,

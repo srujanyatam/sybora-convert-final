@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/form";
 import { toast } from "sonner";
 import FileUploader from "./FileUploader";
-import { ArrowRight, Check, Download, ArrowDown } from "lucide-react";
+import { ArrowRight, Check, Download, ArrowDown, RotateCcw } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import {
   ResizablePanelGroup,
@@ -67,6 +67,21 @@ const ConversionForm = () => {
     }
     setConvertedCode(null);
     setShowComparison(false);
+  };
+  
+  const handleReset = () => {
+    setFile(null);
+    setConvertedCode(null);
+    setManualInput(false);
+    setShowComparison(false);
+    setOriginalCode("");
+    setPerformanceMetrics(null);
+    form.reset({
+      sourceType: "sybase",
+      targetType: "oracle",
+      sybaseCode: "",
+    });
+    toast.success("Form has been reset");
   };
   
   const convertSybaseToOracle = (sybaseCode: string): string => {
@@ -128,6 +143,8 @@ const ConversionForm = () => {
       if (file && !manualInput) {
         const text = await file.text();
         sybaseCode = text;
+        // Update the textarea with file content for better UX
+        form.setValue("sybaseCode", text);
       }
       
       setOriginalCode(sybaseCode);
@@ -175,21 +192,72 @@ const ConversionForm = () => {
     toast.success("Oracle converted code downloaded");
   };
   
+  const handleQuickConvert = async () => {
+    // This function quickly converts any sample code or pasted code
+    const data = form.getValues();
+    if (!data.sybaseCode) {
+      toast.error("Please enter some Sybase code to convert");
+      return;
+    }
+    
+    setManualInput(true);
+    setIsSubmitting(true);
+    toast.loading("Converting Sybase to Oracle...");
+    
+    try {
+      const sybaseCode = data.sybaseCode;
+      setOriginalCode(sybaseCode);
+      
+      // Convert the Sybase code to Oracle
+      const oracleCode = convertSybaseToOracle(sybaseCode);
+      setConvertedCode(oracleCode);
+      
+      // Calculate performance metrics
+      const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
+      setPerformanceMetrics(metrics);
+      
+      setShowComparison(true);
+      
+      toast.dismiss();
+      toast.success("Sybase code successfully converted to Oracle");
+      
+    } catch (error) {
+      toast.dismiss();
+      toast.error("An error occurred during conversion");
+      console.error("Conversion error:", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
   return (
     <div className="w-full max-w-3xl mx-auto">
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-          <div className="flex items-center gap-2 justify-end mb-2">
-            <span className="text-sm text-muted-foreground">Manual Input:</span>
+          <div className="flex items-center gap-2 justify-between mb-2">
             <Button 
               type="button" 
               variant="outline" 
               size="sm"
-              onClick={handleManualInputToggle}
-              className={manualInput ? "bg-primary text-primary-foreground" : ""}
+              onClick={handleReset}
+              className="flex items-center gap-1"
             >
-              {manualInput ? "Enabled" : "Disabled"}
+              <RotateCcw className="w-4 h-4" />
+              Reset
             </Button>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Manual Input:</span>
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="sm"
+                onClick={handleManualInputToggle}
+                className={manualInput ? "bg-primary text-primary-foreground" : ""}
+              >
+                {manualInput ? "Enabled" : "Disabled"}
+              </Button>
+            </div>
           </div>
           
           <div className="grid gap-4 py-4">
@@ -216,6 +284,16 @@ const ConversionForm = () => {
                     </FormItem>
                   )}
                 />
+                {/* Quick Convert button for direct code conversion */}
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="mt-2"
+                  onClick={handleQuickConvert}
+                  disabled={isSubmitting || !form.getValues("sybaseCode")}
+                >
+                  Quick Convert
+                </Button>
               </div>
             )}
             

@@ -1,3 +1,4 @@
+
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, X, FileText, Check, Folder } from "lucide-react";
@@ -6,7 +7,6 @@ import { toast } from "sonner";
 
 interface FileUploaderProps {
   onFileSelect: (files: File[]) => void;
-  accept?: string;
   maxSize?: number; // in MB
   multiple?: boolean;
   acceptFolders?: boolean;
@@ -19,7 +19,6 @@ interface CustomInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 
 const FileUploader = ({ 
   onFileSelect, 
-  accept = ".sql,.db,.dat,.csv,.xml", 
   maxSize = 100,
   multiple = false,
   acceptFolders = false
@@ -75,7 +74,7 @@ const FileUploader = ({
       if (entry.isFile) {
         const promise = new Promise<void>((resolve) => {
           entry.file((file: File) => {
-            if (isSybaseFile(file)) {
+            if (isSqlFile(file)) {
               allFiles.push(file);
             } else {
               rejectedFiles.push(file.name);
@@ -105,7 +104,7 @@ const FileUploader = ({
           await processEntry(entry);
         } else {
           const file = item.getAsFile();
-          if (file && isSybaseFile(file)) {
+          if (file && isSqlFile(file)) {
             allFiles.push(file);
           } else if (file) {
             rejectedFiles.push(file.name);
@@ -118,29 +117,23 @@ const FileUploader = ({
 
     if (rejectedFiles.length > 0) {
       const msg = rejectedFiles.length === 1 
-        ? `File "${rejectedFiles[0]}" is not a Sybase file and was skipped.`
-        : `${rejectedFiles.length} files were not Sybase files and were skipped.`;
+        ? `File "${rejectedFiles[0]}" is not a SQL file and was skipped.`
+        : `${rejectedFiles.length} files were not SQL files and were skipped.`;
       toast.error(msg);
     }
 
     if (allFiles.length > 0) {
       setFiles(allFiles);
       onFileSelect(allFiles);
-      toast.success(`${allFiles.length} valid Sybase file(s) uploaded successfully`);
+      toast.success(`${allFiles.length} valid SQL file(s) uploaded successfully`);
     } else if (rejectedFiles.length > 0) {
-      toast.error("No valid Sybase files found in the upload.");
+      toast.error("No valid SQL files found in the upload.");
     }
   };
   
-  const isSybaseFile = (file: File): boolean => {
+  const isSqlFile = (file: File): boolean => {
     const fileExtension = `.${file.name.split('.').pop()?.toLowerCase()}`;
-    const acceptedTypes = accept.split(',');
-    
-    if (!acceptedTypes.some(type => type.trim() === fileExtension || type.trim() === '*')) {
-      return false;
-    }
-
-    return true;
+    return fileExtension === '.sql';
   };
   
   const validateAndProcessFile = (file: File) => {
@@ -149,8 +142,8 @@ const FileUploader = ({
       return false;
     }
     
-    if (!isSybaseFile(file)) {
-      toast.error(`File "${file.name}" is not a valid Sybase file.`);
+    if (!isSqlFile(file)) {
+      toast.error(`File "${file.name}" is not a valid SQL file.`);
       return false;
     }
     
@@ -170,7 +163,7 @@ const FileUploader = ({
         return;
       }
       
-      if (!isSybaseFile(file)) {
+      if (!isSqlFile(file)) {
         rejectedFiles.push(file.name);
         return;
       }
@@ -180,15 +173,15 @@ const FileUploader = ({
     
     if (rejectedFiles.length > 0) {
       const msg = rejectedFiles.length === 1 
-        ? `File "${rejectedFiles[0]}" is not a Sybase file and was skipped.`
-        : `${rejectedFiles.length} files were not Sybase files and were skipped.`;
+        ? `File "${rejectedFiles[0]}" is not a SQL file and was skipped.`
+        : `${rejectedFiles.length} files were not SQL files and were skipped.`;
       toast.error(msg);
     }
     
     if (validFiles.length > 0) {
       setFiles(validFiles);
       onFileSelect(validFiles);
-      toast.success(`${validFiles.length} valid Sybase file(s) uploaded successfully`);
+      toast.success(`${validFiles.length} valid SQL file(s) uploaded successfully`);
     }
   };
   
@@ -242,7 +235,7 @@ const FileUploader = ({
         type="file"
         ref={fileInputRef}
         onChange={handleFileChange}
-        accept={accept}
+        accept=".sql"
         multiple={multiple}
         className="hidden"
       />
@@ -251,7 +244,7 @@ const FileUploader = ({
           type="file"
           ref={folderInputRef}
           onChange={handleFolderChange}
-          accept={accept}
+          accept=".sql"
           multiple={multiple}
           {...{ directory: "", webkitdirectory: "" } as CustomInputProps}
           className="hidden"
@@ -302,17 +295,17 @@ const FileUploader = ({
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-3">
-              Supported formats: {accept} (Max size: {maxSize}MB)
+              Supported format: .sql files only (Max size: {maxSize}MB)
             </p>
             <p className="text-xs text-muted-foreground">
-              Only Sybase files will be processed. Other files will be skipped.
+              Only SQL files will be processed. Other files will be skipped.
             </p>
           </div>
         </div>
       ) : (
         <div className="border rounded-xl p-6 bg-secondary/30">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-base font-medium">Uploaded Sybase Files ({files.length})</h3>
+            <h3 className="text-base font-medium">Uploaded SQL Files ({files.length})</h3>
             {files.length > 1 && (
               <Button size="sm" variant="ghost" className="text-destructive" onClick={handleRemoveAllFiles}>
                 Remove All

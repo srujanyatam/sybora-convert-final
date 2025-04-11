@@ -1,4 +1,3 @@
-
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, X, FileText, Check, Folder } from "lucide-react";
@@ -11,6 +10,11 @@ interface FileUploaderProps {
   maxSize?: number; // in MB
   multiple?: boolean;
   acceptFolders?: boolean;
+}
+
+interface CustomInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+  directory?: string;
+  webkitdirectory?: string;
 }
 
 const FileUploader = ({ 
@@ -94,7 +98,6 @@ const FileUploader = ({
       }
     };
 
-    // Process all items
     for (const item of items) {
       if (item.kind === 'file') {
         const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
@@ -111,10 +114,8 @@ const FileUploader = ({
       }
     }
     
-    // Wait for all file processing to complete
     await Promise.all(promises);
 
-    // Show notifications
     if (rejectedFiles.length > 0) {
       const msg = rejectedFiles.length === 1 
         ? `File "${rejectedFiles[0]}" is not a Sybase file and was skipped.`
@@ -132,7 +133,6 @@ const FileUploader = ({
   };
   
   const isSybaseFile = (file: File): boolean => {
-    // Check file extension
     const fileExtension = `.${file.name.split('.').pop()?.toLowerCase()}`;
     const acceptedTypes = accept.split(',');
     
@@ -140,21 +140,15 @@ const FileUploader = ({
       return false;
     }
 
-    // Additional check could include content scanning
-    // This would require reading the file content and looking for Sybase-specific syntax
-    // For now, we'll rely on extension + potential future content check
-    
     return true;
   };
   
   const validateAndProcessFile = (file: File) => {
-    // Check file size
     if (file.size > maxSize * 1024 * 1024) {
       toast.error(`File ${file.name} is too large. Maximum size is ${maxSize}MB.`);
       return false;
     }
     
-    // Check if it's a Sybase file
     if (!isSybaseFile(file)) {
       toast.error(`File "${file.name}" is not a valid Sybase file.`);
       return false;
@@ -171,13 +165,11 @@ const FileUploader = ({
     const rejectedFiles: string[] = [];
     
     filesToProcess.forEach(file => {
-      // Check file size
       if (file.size > maxSize * 1024 * 1024) {
         toast.error(`File ${file.name} is too large. Maximum size is ${maxSize}MB.`);
         return;
       }
       
-      // Check if it's a Sybase file
       if (!isSybaseFile(file)) {
         rejectedFiles.push(file.name);
         return;
@@ -261,8 +253,7 @@ const FileUploader = ({
           onChange={handleFolderChange}
           accept={accept}
           multiple={multiple}
-          directory=""
-          webkitdirectory=""
+          {...{ directory: "", webkitdirectory: "" } as CustomInputProps}
           className="hidden"
         />
       )}

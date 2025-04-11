@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -58,12 +59,24 @@ const ConversionForm = () => {
   });
   
   const handleFileSelect = (selectedFiles: File[]) => {
-    setFiles(selectedFiles);
+    // Filter out non-SQL files
+    const sqlFiles = selectedFiles.filter(file => file.name.toLowerCase().endsWith('.sql'));
+    
+    if (sqlFiles.length !== selectedFiles.length) {
+      toast.error("Only SQL files are supported. Non-SQL files were removed.");
+    }
+    
+    if (sqlFiles.length === 0) {
+      toast.error("Please upload SQL files only.");
+      return;
+    }
+    
+    setFiles(sqlFiles);
     setConversionResults([]);
     setManualInput(false);
     form.setValue("sybaseCode", "");
     
-    if (selectedFiles.length > 0) {
+    if (sqlFiles.length > 0) {
       setShowUploader(false);
     } else {
       setShowUploader(true);
@@ -106,12 +119,18 @@ const ConversionForm = () => {
     
     try {
       const results: ConversionResult[] = [];
-      const optimizationLevel = "aggressive"; // Always use aggressive optimization
       
       if (files.length > 0 && !manualInput) {
         for (const file of files) {
+          // Check if file is SQL
+          if (!file.name.toLowerCase().endsWith('.sql')) {
+            toast.error(`File ${file.name} is not an SQL file and will be skipped.`);
+            continue;
+          }
+          
           const text = await file.text();
-          const oracleCode = convertSybaseToOracle(text, optimizationLevel);
+          // Fixed: Removed the second argument
+          const oracleCode = convertSybaseToOracle(text);
           
           const metrics = calculatePerformanceMetrics(text, oracleCode);
           
@@ -124,7 +143,8 @@ const ConversionForm = () => {
         }
       } else if (data.sybaseCode) {
         const sybaseCode = data.sybaseCode;
-        const oracleCode = convertSybaseToOracle(sybaseCode, optimizationLevel);
+        // Fixed: Removed the second argument
+        const oracleCode = convertSybaseToOracle(sybaseCode);
         
         const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
         
@@ -184,9 +204,8 @@ const ConversionForm = () => {
     
     try {
       const sybaseCode = data.sybaseCode;
-      const optimizationLevel = "aggressive"; // Always use aggressive optimization
-      
-      const oracleCode = convertSybaseToOracle(sybaseCode, optimizationLevel);
+      // Fixed: Removed the second argument
+      const oracleCode = convertSybaseToOracle(sybaseCode);
       
       const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
       

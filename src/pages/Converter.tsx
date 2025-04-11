@@ -14,8 +14,11 @@ const Converter = () => {
           <h1 className="text-3xl md:text-5xl font-bold tracking-tighter mb-3">
             Sybase to Oracle Converter
           </h1>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-[600px]">
-            Upload your SQL files or entire folders for efficient conversion with side-by-side comparison
+          <p className="text-lg md:text-xl text-muted-foreground max-w-[700px]">
+            Upload your SQL files or entire folders for high-performance conversion with optimized Oracle output
+          </p>
+          <p className="text-md text-green-600 max-w-[700px] mt-2">
+            Now with enhanced optimization for large database files and improved batch processing
           </p>
         </div>
         

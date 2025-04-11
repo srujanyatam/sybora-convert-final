@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -9,7 +10,15 @@ import {
   FormField,
   FormItem,
   FormLabel,
+  FormDescription
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from "@/components/ui/select";
 import { toast } from "sonner";
 import FileUploader from "./FileUploader";
 import { ArrowRight, Check, Download, RotateCcw, FileText } from "lucide-react";
@@ -21,11 +30,13 @@ import {
 } from "@/components/ui/resizable";
 import { calculatePerformanceMetrics } from "@/lib/conversionMetrics";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { convertSybaseToOracle } from "@/lib/conversion";
 
 const FormSchema = z.object({
   sourceType: z.string().default("sybase"),
   targetType: z.string().default("oracle"),
   sybaseCode: z.string().optional(),
+  optimizationLevel: z.enum(["standard", "aggressive", "conservative"]).default("standard"),
 });
 
 interface ConversionResult {
@@ -53,6 +64,7 @@ const ConversionForm = () => {
       sourceType: "sybase",
       targetType: "oracle",
       sybaseCode: "",
+      optimizationLevel: "standard",
     },
   });
   
@@ -90,40 +102,9 @@ const ConversionForm = () => {
       sourceType: "sybase",
       targetType: "oracle",
       sybaseCode: "",
+      optimizationLevel: "standard",
     });
     toast.success("Form has been reset");
-  };
-  
-  const convertSybaseToOracle = (sybaseCode: string): string => {
-    if (sybaseCode.includes("CREATE PROCEDURE")) {
-      const procedureNameMatch = sybaseCode.match(/CREATE\s+PROCEDURE\s+(\w+)/i);
-      const procedureName = procedureNameMatch ? procedureNameMatch[1] : "UnknownProcedure";
-      
-      let oracleCode = sybaseCode
-        .replace(/CREATE\s+PROCEDURE\s+(\w+)/i, "CREATE OR REPLACE PROCEDURE $1(EmployeeCount OUT NUMBER)")
-        .replace(/SELECT\s+COUNT\(\*\)\s+AS\s+(\w+)/i, "SELECT COUNT(*) INTO $1")
-        .replace(/END$/i, "END;");
-      
-      return oracleCode;
-    }
-    
-    if (sybaseCode.includes("CREATE TABLE")) {
-      return sybaseCode
-        .replace(/\bdatetime\b/gi, "DATE")
-        .replace(/\bint\b/gi, "NUMBER(10)")
-        .replace(/\bvarchar\b/gi, "VARCHAR2")
-        .replace(/\bnumeric\s*\((\d+),\s*(\d+)\)/gi, "NUMBER($1,$2)")
-        .replace(/identity\(\d+,\s*\d+\)/gi, "")
-        .replace(/GO\s*$/gim, "/");
-    }
-    
-    return sybaseCode
-      .replace(/GO/g, "/")
-      .replace(/\bdatetime\b/gi, "DATE")
-      .replace(/\bint\b/gi, "NUMBER(10)")
-      .replace(/\bvarchar\b/gi, "VARCHAR2")
-      .replace(/\bnumeric\s*\((\d+),\s*(\d+)\)/gi, "NUMBER($1,$2)")
-      .replace(/END$/i, "END;");
   };
   
   const onSubmit = async (data: z.infer<typeof FormSchema>) => {
@@ -141,7 +122,7 @@ const ConversionForm = () => {
       if (files.length > 0 && !manualInput) {
         for (const file of files) {
           const text = await file.text();
-          const oracleCode = convertSybaseToOracle(text);
+          const oracleCode = convertSybaseToOracle(text, data.optimizationLevel);
           
           const metrics = calculatePerformanceMetrics(text, oracleCode);
           
@@ -154,7 +135,7 @@ const ConversionForm = () => {
         }
       } else if (data.sybaseCode) {
         const sybaseCode = data.sybaseCode;
-        const oracleCode = convertSybaseToOracle(sybaseCode);
+        const oracleCode = convertSybaseToOracle(sybaseCode, data.optimizationLevel);
         
         const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
         
@@ -215,7 +196,7 @@ const ConversionForm = () => {
     try {
       const sybaseCode = data.sybaseCode;
       
-      const oracleCode = convertSybaseToOracle(sybaseCode);
+      const oracleCode = convertSybaseToOracle(sybaseCode, data.optimizationLevel);
       
       const metrics = calculatePerformanceMetrics(sybaseCode, oracleCode);
       
@@ -271,12 +252,38 @@ const ConversionForm = () => {
           </div>
           
           <div className="grid gap-4 py-4">
+            <FormField
+              control={form.control}
+              name="optimizationLevel"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Optimization Level</FormLabel>
+                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select optimization level" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="standard">Standard (Default)</SelectItem>
+                      <SelectItem value="aggressive">Aggressive (Better Performance)</SelectItem>
+                      <SelectItem value="conservative">Conservative (Better Compatibility)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    Choose how aggressively to optimize the converted code
+                  </FormDescription>
+                </FormItem>
+              )}
+            />
+            
             {showUploader && !manualInput ? (
               <div className="mb-4">
                 <h3 className="text-lg font-medium mb-2">Upload Sybase Database Files</h3>
                 <FileUploader 
                   onFileSelect={handleFileSelect} 
                   multiple={true}
+                  acceptFolders={true}
                 />
               </div>
             ) : !manualInput && files.length > 0 ? (

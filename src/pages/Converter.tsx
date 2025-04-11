@@ -12,10 +12,10 @@ const Converter = () => {
       <div className="container px-4 md:px-6">
         <div className="flex flex-col items-center justify-center mb-8 text-center">
           <h1 className="text-3xl md:text-5xl font-bold tracking-tighter mb-3">
-            Database Converter
+            Sybase to Oracle Converter
           </h1>
           <p className="text-lg md:text-xl text-muted-foreground max-w-[600px]">
-            Upload your database files for quick conversion with side-by-side comparison
+            Upload your Sybase files or entire folders for efficient conversion with side-by-side comparison
           </p>
         </div>
         

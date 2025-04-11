@@ -4,6 +4,7 @@
 export interface ConversionOptions {
   sourceType: string;
   targetType: string;
+  optimizationLevel?: 'standard' | 'aggressive' | 'conservative';
 }
 
 export interface ConversionResult {
@@ -35,6 +36,193 @@ export interface ConversionResult {
   };
   issues: any[];
 }
+
+// Regular expression patterns for improved Sybase to Oracle conversion
+const sybasePatterns = {
+  // Data types
+  datatypePatterns: [
+    { pattern: /\bint\b/gi, replacement: "NUMBER(10)" },
+    { pattern: /\bsmallint\b/gi, replacement: "NUMBER(5)" },
+    { pattern: /\btinyint\b/gi, replacement: "NUMBER(3)" },
+    { pattern: /\bbigint\b/gi, replacement: "NUMBER(19)" },
+    { pattern: /\bdecimal\s*\((\d+),\s*(\d+)\)/gi, replacement: "NUMBER($1,$2)" },
+    { pattern: /\bnumeric\s*\((\d+),\s*(\d+)\)/gi, replacement: "NUMBER($1,$2)" },
+    { pattern: /\bfloat\b/gi, replacement: "FLOAT" },
+    { pattern: /\breal\b/gi, replacement: "FLOAT" },
+    { pattern: /\bdouble precision\b/gi, replacement: "FLOAT" },
+    { pattern: /\bdatetime\b/gi, replacement: "DATE" },
+    { pattern: /\bsmalltime\b/gi, replacement: "DATE" },
+    { pattern: /\btimestamp\b/gi, replacement: "TIMESTAMP" },
+    { pattern: /\bchar\s*\((\d+)\)/gi, replacement: "CHAR($1)" },
+    { pattern: /\bvarchar\s*\((\d+)\)/gi, replacement: "VARCHAR2($1)" },
+    { pattern: /\bnvarchar\s*\((\d+)\)/gi, replacement: "NVARCHAR2($1)" },
+    { pattern: /\btext\b/gi, replacement: "CLOB" },
+    { pattern: /\bimage\b/gi, replacement: "BLOB" },
+    { pattern: /\bmoney\b/gi, replacement: "NUMBER(19,4)" },
+    { pattern: /\bbit\b/gi, replacement: "NUMBER(1)" }
+  ],
+  
+  // Identity columns
+  identityPattern: /identity\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/gi,
+  
+  // Procedures and functions
+  procedurePattern: /CREATE\s+PROC(EDURE)?\s+(\w+)/gi,
+  
+  // Delimiters and batch separators
+  goPattern: /\bGO\b/g,
+  
+  // Cursor syntax
+  cursorPattern: /DECLARE\s+(\w+)\s+CURSOR\s+FOR\s+(.*?)\s+FOR\s+UPDATE/gi,
+  openCursorPattern: /OPEN\s+(\w+)/gi,
+  fetchCursorPattern: /FETCH\s+(\w+)\s+INTO\s+(.*)/gi,
+  closeCursorPattern: /CLOSE\s+(\w+)/gi,
+  deallocateCursorPattern: /DEALLOCATE\s+(\w+)/gi,
+  
+  // Transaction management
+  beginTransPattern: /BEGIN\s+TRAN(SACTION)?/gi,
+  commitTransPattern: /COMMIT\s+TRAN(SACTION)?/gi,
+  rollbackTransPattern: /ROLLBACK\s+TRAN(SACTION)?/gi,
+  
+  // Joins
+  joinsPattern: /(\w+)\s+=\s+(\w+)\./gi,
+};
+
+/**
+ * Improved Sybase to Oracle converter with advanced pattern matching
+ * @param sybaseCode The original Sybase code to convert
+ * @returns Converted Oracle code
+ */
+export const convertSybaseToOracle = (sybaseCode: string, optimizationLevel: string = 'standard'): string => {
+  let oracleCode = sybaseCode;
+  
+  // Convert data types
+  sybasePatterns.datatypePatterns.forEach(({ pattern, replacement }) => {
+    oracleCode = oracleCode.replace(pattern, replacement);
+  });
+  
+  // Handle identity columns - convert to Oracle sequence and trigger pattern
+  oracleCode = oracleCode.replace(/CREATE\s+TABLE\s+(\w+)\s*\(([\s\S]*?)identity\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)([\s\S]*?)\)/gi, (match, tableName, beforeIdentity, seed, increment, afterIdentity) => {
+    // Extract the column name that has the identity property
+    const identityColMatch = beforeIdentity.match(/(\w+)[\s\n]+[^,]*?$/);
+    const identityColumn = identityColMatch ? identityColMatch[1] : 'id';
+    
+    // Create the table without identity
+    const tableDefinition = `CREATE TABLE ${tableName} (${beforeIdentity}${afterIdentity})`;
+    
+    // Create sequence and trigger
+    const sequenceName = `${tableName}_seq`;
+    const triggerName = `${tableName}_bir`;
+    
+    return `${tableDefinition}\n\n` +
+           `-- Create sequence for identity column\n` +
+           `CREATE SEQUENCE ${sequenceName} START WITH ${seed} INCREMENT BY ${increment} NOCACHE NOCYCLE;\n\n` +
+           `-- Create trigger to emulate identity\n` +
+           `CREATE OR REPLACE TRIGGER ${triggerName}\n` +
+           `BEFORE INSERT ON ${tableName}\n` +
+           `FOR EACH ROW\n` +
+           `BEGIN\n` +
+           `  IF :new.${identityColumn} IS NULL THEN\n` +
+           `    SELECT ${sequenceName}.NEXTVAL INTO :new.${identityColumn} FROM dual;\n` +
+           `  END IF;\n` +
+           `END;\n` +
+           `/`;
+  });
+  
+  // Convert procedures
+  oracleCode = oracleCode.replace(/CREATE\s+PROC(EDURE)?\s+(\w+)\s*(\([\s\S]*?\))?\s*AS([\s\S]*?)(?:GO|$)/gi, (match, _, procName, params, body) => {
+    // Parse and convert parameters
+    let oracleParams = '';
+    if (params) {
+      oracleParams = params
+        .replace(/@(\w+)\s+(\w+)(?:\s*\((\d+)(?:,\s*(\d+))?\))?/g, (paramMatch, paramName, paramType, paramSize, paramScale) => {
+          let oracleType = 'VARCHAR2';
+          
+          switch (paramType.toLowerCase()) {
+            case 'int':
+              oracleType = 'NUMBER';
+              break;
+            case 'varchar':
+              oracleType = 'VARCHAR2';
+              break;
+            case 'datetime':
+              oracleType = 'DATE';
+              break;
+            // More type mappings could be added here
+          }
+          
+          if (paramSize) {
+            if (paramScale) {
+              oracleType += `(${paramSize},${paramScale})`;
+            } else {
+              oracleType += `(${paramSize})`;
+            }
+          }
+          
+          return `p_${paramName} IN ${oracleType}`;
+        });
+    }
+    
+    // Convert procedure body
+    let oracleBody = body
+      // Replace Sybase variable declarations with Oracle
+      .replace(/@(\w+)\s+(\w+)(?:\s*\((\d+)(?:,\s*(\d+))?\))?/g, (varMatch, varName, varType, varSize, varScale) => {
+        let oracleType = 'VARCHAR2';
+        
+        switch (varType.toLowerCase()) {
+          case 'int':
+            oracleType = 'NUMBER';
+            break;
+          case 'varchar':
+            oracleType = 'VARCHAR2';
+            break;
+          case 'datetime':
+            oracleType = 'DATE';
+            break;
+          // More type mappings could be added here
+        }
+        
+        if (varSize) {
+          if (varScale) {
+            oracleType += `(${varSize},${varScale})`;
+          } else {
+            oracleType += `(${varSize})`;
+          }
+        }
+        
+        return `v_${varName} ${oracleType}`;
+      })
+      
+      // Convert SELECT into variables
+      .replace(/SELECT\s+(.*?)\s*=\s*(.*?)(?:;|$)/g, 'SELECT $2 INTO $1 FROM dual;')
+      
+      // Convert procedure flow control
+      .replace(/IF\s+(.*?)\s+BEGIN/gi, 'IF $1 THEN')
+      .replace(/ELSE\s+BEGIN/gi, 'ELSE')
+      
+      // Ensure END statements have semicolons for PL/SQL
+      .replace(/END\s*(?!;)/g, 'END;');
+    
+    // Format the final Oracle procedure
+    return `CREATE OR REPLACE PROCEDURE ${procName}(${oracleParams})\nAS\nBEGIN\n${oracleBody}\nEND;\n/`;
+  });
+  
+  // Convert batch separators
+  oracleCode = oracleCode.replace(/\bGO\b/g, '/');
+  
+  // Apply optimization level-specific transformations
+  if (optimizationLevel === 'aggressive') {
+    // Convert old-style joins to ANSI joins for better optimizer usage
+    oracleCode = oracleCode.replace(/FROM\s+(\w+),\s*(\w+)\s+WHERE\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)/gi, 'FROM $1 JOIN $2 ON $3.$4 = $5.$6');
+    
+    // Add explicit optimizer hints for large tables
+    oracleCode = oracleCode.replace(/SELECT\b/gi, 'SELECT /*+ INDEX_JOIN */');
+  }
+  
+  // Ensure all statements end with semicolons
+  oracleCode = oracleCode.replace(/([^;])\s*$/gm, '$1;');
+  
+  return oracleCode;
+};
 
 /**
  * Process the database file and perform the conversion

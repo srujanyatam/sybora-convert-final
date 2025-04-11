@@ -1,7 +1,7 @@
 
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, X, FileText, Check } from "lucide-react";
+import { Upload, X, FileText, Check, Folder } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -10,17 +10,20 @@ interface FileUploaderProps {
   accept?: string;
   maxSize?: number; // in MB
   multiple?: boolean;
+  acceptFolders?: boolean;
 }
 
 const FileUploader = ({ 
   onFileSelect, 
   accept = ".sql,.db,.dat,.csv,.xml", 
   maxSize = 100,
-  multiple = false
+  multiple = false,
+  acceptFolders = false
 }: FileUploaderProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
   
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
@@ -45,7 +48,10 @@ const FileUploader = ({
     e.stopPropagation();
     setIsDragging(false);
     
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      const items = Array.from(e.dataTransfer.items);
+      handleDropItems(items);
+    } else if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const droppedFiles = Array.from(e.dataTransfer.files);
       
       if (multiple) {
@@ -55,6 +61,91 @@ const FileUploader = ({
       }
     }
   };
+
+  const handleDropItems = async (items: DataTransferItem[]) => {
+    const allFiles: File[] = [];
+    const promises: Promise<void>[] = [];
+    const rejectedFiles: string[] = [];
+
+    const processEntry = async (entry: any) => {
+      if (entry.isFile) {
+        const promise = new Promise<void>((resolve) => {
+          entry.file((file: File) => {
+            if (isSybaseFile(file)) {
+              allFiles.push(file);
+            } else {
+              rejectedFiles.push(file.name);
+            }
+            resolve();
+          });
+        });
+        promises.push(promise);
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const promise = new Promise<void>((resolve) => {
+          reader.readEntries(async (entries: any[]) => {
+            for (const subEntry of entries) {
+              await processEntry(subEntry);
+            }
+            resolve();
+          });
+        });
+        promises.push(promise);
+      }
+    };
+
+    // Process all items
+    for (const item of items) {
+      if (item.kind === 'file') {
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+        if (entry) {
+          await processEntry(entry);
+        } else {
+          const file = item.getAsFile();
+          if (file && isSybaseFile(file)) {
+            allFiles.push(file);
+          } else if (file) {
+            rejectedFiles.push(file.name);
+          }
+        }
+      }
+    }
+    
+    // Wait for all file processing to complete
+    await Promise.all(promises);
+
+    // Show notifications
+    if (rejectedFiles.length > 0) {
+      const msg = rejectedFiles.length === 1 
+        ? `File "${rejectedFiles[0]}" is not a Sybase file and was skipped.`
+        : `${rejectedFiles.length} files were not Sybase files and were skipped.`;
+      toast.error(msg);
+    }
+
+    if (allFiles.length > 0) {
+      setFiles(allFiles);
+      onFileSelect(allFiles);
+      toast.success(`${allFiles.length} valid Sybase file(s) uploaded successfully`);
+    } else if (rejectedFiles.length > 0) {
+      toast.error("No valid Sybase files found in the upload.");
+    }
+  };
+  
+  const isSybaseFile = (file: File): boolean => {
+    // Check file extension
+    const fileExtension = `.${file.name.split('.').pop()?.toLowerCase()}`;
+    const acceptedTypes = accept.split(',');
+    
+    if (!acceptedTypes.some(type => type.trim() === fileExtension || type.trim() === '*')) {
+      return false;
+    }
+
+    // Additional check could include content scanning
+    // This would require reading the file content and looking for Sybase-specific syntax
+    // For now, we'll rely on extension + potential future content check
+    
+    return true;
+  };
   
   const validateAndProcessFile = (file: File) => {
     // Check file size
@@ -63,15 +154,10 @@ const FileUploader = ({
       return false;
     }
     
-    // Check file type if accept is specified
-    if (accept && accept.length > 0) {
-      const fileExtension = `.${file.name.split('.').pop()?.toLowerCase()}`;
-      const acceptedTypes = accept.split(',');
-      
-      if (!acceptedTypes.some(type => type.trim() === fileExtension || type.trim() === '*')) {
-        toast.error(`Invalid file type for ${file.name}. Accepted types: ${accept}`);
-        return false;
-      }
+    // Check if it's a Sybase file
+    if (!isSybaseFile(file)) {
+      toast.error(`File "${file.name}" is not a valid Sybase file.`);
+      return false;
     }
     
     setFiles([file]);
@@ -82,6 +168,7 @@ const FileUploader = ({
   
   const validateAndProcessFiles = (filesToProcess: File[]) => {
     const validFiles: File[] = [];
+    const rejectedFiles: string[] = [];
     
     filesToProcess.forEach(file => {
       // Check file size
@@ -90,29 +177,35 @@ const FileUploader = ({
         return;
       }
       
-      // Check file type if accept is specified
-      if (accept && accept.length > 0) {
-        const fileExtension = `.${file.name.split('.').pop()?.toLowerCase()}`;
-        const acceptedTypes = accept.split(',');
-        
-        if (!acceptedTypes.some(type => type.trim() === fileExtension || type.trim() === '*')) {
-          toast.error(`Invalid file type for ${file.name}. Accepted types: ${accept}`);
-          return;
-        }
+      // Check if it's a Sybase file
+      if (!isSybaseFile(file)) {
+        rejectedFiles.push(file.name);
+        return;
       }
       
       validFiles.push(file);
     });
     
+    if (rejectedFiles.length > 0) {
+      const msg = rejectedFiles.length === 1 
+        ? `File "${rejectedFiles[0]}" is not a Sybase file and was skipped.`
+        : `${rejectedFiles.length} files were not Sybase files and were skipped.`;
+      toast.error(msg);
+    }
+    
     if (validFiles.length > 0) {
       setFiles(validFiles);
       onFileSelect(validFiles);
-      toast.success(`${validFiles.length} file(s) uploaded successfully`);
+      toast.success(`${validFiles.length} valid Sybase file(s) uploaded successfully`);
     }
   };
   
   const handleSelectFile = () => {
     fileInputRef.current?.click();
+  };
+  
+  const handleSelectFolder = () => {
+    folderInputRef.current?.click();
   };
   
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -122,6 +215,12 @@ const FileUploader = ({
       } else {
         validateAndProcessFile(e.target.files[0]);
       }
+    }
+  };
+
+  const handleFolderChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      validateAndProcessFiles(Array.from(e.target.files));
     }
   };
   
@@ -140,6 +239,7 @@ const FileUploader = ({
   const handleRemoveAllFiles = () => {
     setFiles([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
+    if (folderInputRef.current) folderInputRef.current.value = '';
     onFileSelect([]);
     toast.info("All files removed");
   };
@@ -154,11 +254,23 @@ const FileUploader = ({
         multiple={multiple}
         className="hidden"
       />
+      {acceptFolders && (
+        <input
+          type="file"
+          ref={folderInputRef}
+          onChange={handleFolderChange}
+          accept={accept}
+          multiple={multiple}
+          directory=""
+          webkitdirectory=""
+          className="hidden"
+        />
+      )}
       
       {files.length === 0 ? (
         <div
           className={cn(
-            "border-2 border-dashed rounded-xl p-10 text-center transition-all cursor-pointer",
+            "border-2 border-dashed rounded-xl p-10 text-center transition-all",
             isDragging 
               ? "border-primary bg-primary/5" 
               : "border-border hover:border-primary/50 hover:bg-secondary/50"
@@ -167,25 +279,49 @@ const FileUploader = ({
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
-          onClick={handleSelectFile}
         >
           <div className="flex flex-col items-center gap-2">
             <div className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center mb-2">
               <Upload className="w-6 h-6 text-primary" />
             </div>
-            <h3 className="text-lg font-medium">Drag & drop your file{multiple ? 's' : ''} here</h3>
+            <h3 className="text-lg font-medium">Drag & drop your file{multiple ? 's' : ''} or folder here</h3>
             <p className="text-sm text-muted-foreground mb-3">
-              or click to browse your files
+              or select using the options below
+            </p>
+            <div className="flex gap-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={handleSelectFile}
+                className="flex items-center gap-2"
+              >
+                <FileText className="w-4 h-4" />
+                Browse Files
+              </Button>
+              {acceptFolders && (
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={handleSelectFolder}
+                  className="flex items-center gap-2"
+                >
+                  <Folder className="w-4 h-4" />
+                  Browse Folders
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+              Supported formats: {accept} (Max size: {maxSize}MB)
             </p>
             <p className="text-xs text-muted-foreground">
-              Supported formats: {accept} (Max size: {maxSize}MB)
+              Only Sybase files will be processed. Other files will be skipped.
             </p>
           </div>
         </div>
       ) : (
         <div className="border rounded-xl p-6 bg-secondary/30">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-base font-medium">Uploaded Files ({files.length})</h3>
+            <h3 className="text-base font-medium">Uploaded Sybase Files ({files.length})</h3>
             {files.length > 1 && (
               <Button size="sm" variant="ghost" className="text-destructive" onClick={handleRemoveAllFiles}>
                 Remove All

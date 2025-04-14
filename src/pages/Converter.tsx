@@ -12,7 +12,7 @@ const Converter = () => {
       <div className="container px-4 md:px-6">
         <div className="flex flex-col items-center justify-center mb-8 text-center">
           <h1 className="text-3xl md:text-5xl font-bold tracking-tighter mb-3">
-            Sybase to Oracle
+            Sybase to Oracle Converter
           </h1>
         </div>
         

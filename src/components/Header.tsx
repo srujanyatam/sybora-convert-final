@@ -10,7 +10,7 @@ const Header = () => {
       <div className="container flex h-14 items-center">
         <Link to="/" className="flex items-center gap-2 font-semibold">
           <Database className="w-5 h-5 text-primary" />
-          <span>DB Migrate</span>
+          <span>Sybase to Oracle Converter</span>
         </Link>
         
         <nav className="ml-auto flex gap-4 md:gap-6 items-center">

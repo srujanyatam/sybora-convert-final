@@ -1,3 +1,4 @@
+
 // This is a mock implementation of the conversion logic
 // In a real application, this would interact with backend Python services
 
@@ -113,6 +114,11 @@ const sybasePatterns = {
   
   // Optimize transaction isolation level
   transactionIsolationPattern: /SET TRANSACTION ISOLATION LEVEL\s+(\w+)/gi,
+  
+  // Fix for var, print, and select statements (New patterns)
+  varPattern: /DECLARE\s+@(\w+)\s+(\w+)(?:\s*\((\d+)(?:,\s*(\d+))?\))?(?:\s*=\s*([^;]+))?/gi,
+  printPattern: /PRINT\s+([^;]+)/gi,
+  selectAssignmentPattern: /SELECT\s+@(\w+)\s*=\s*([^;]+)/gi,
 };
 
 /**
@@ -242,6 +248,51 @@ export const convertSybaseToOracle = (sybaseCode: string): string => {
         return `v_${varName} ${oracleType}`;
       })
       
+      // Convert DECLARE @var statements (new)
+      .replace(sybasePatterns.varPattern, (match, varName, varType, varSize, varScale, initialValue) => {
+        let oracleType = 'VARCHAR2';
+        
+        switch (varType.toLowerCase()) {
+          case 'int': 
+            oracleType = 'NUMBER';
+            break;
+          case 'varchar':
+            oracleType = 'VARCHAR2';
+            break;
+          case 'datetime':
+            oracleType = 'TIMESTAMP';
+            break;
+          case 'float':
+          case 'real':
+            oracleType = 'BINARY_FLOAT';
+            break;
+          case 'double':
+            oracleType = 'BINARY_DOUBLE';
+            break;
+        }
+        
+        if (varSize) {
+          if (varScale) {
+            oracleType += `(${varSize},${varScale})`;
+          } else {
+            oracleType += `(${varSize})`;
+          }
+        }
+        
+        let declaration = `v_${varName} ${oracleType}`;
+        if (initialValue) {
+          declaration += ` := ${initialValue}`;
+        }
+        
+        return declaration;
+      })
+      
+      // Convert PRINT statements to DBMS_OUTPUT.PUT_LINE (new)
+      .replace(sybasePatterns.printPattern, "DBMS_OUTPUT.PUT_LINE($1)")
+      
+      // Convert SELECT @var = value to variable assignment (new)
+      .replace(sybasePatterns.selectAssignmentPattern, "v_$1 := $2")
+      
       // Optimize SELECT into variables with bulk collect when possible
       .replace(/SELECT\s+(.*?)\s*=\s*(.*?)(?:;|$)/g, 'SELECT $2 INTO $1 FROM dual;')
       
@@ -357,6 +408,49 @@ END ${procName};
   oracleCode = oracleCode.replace(/ALTER\s+TABLE\s+(\w+)\s+MODIFY\s+(\w+)\s+NOT\s+NULL\s*(?!;)/gi, 
     'ALTER TABLE $1 MODIFY $2 NOT NULL;');
   
+  // Fix standalone variable declarations (new)
+  oracleCode = oracleCode.replace(/DECLARE\s+@(\w+)\s+(\w+)(?:\s*\((\d+)(?:,\s*(\d+))?\))?(?:\s*=\s*([^;]+))?/gi, (match, varName, varType, varSize, varScale, initialValue) => {
+    let oracleType = 'VARCHAR2';
+    
+    switch (varType.toLowerCase()) {
+      case 'int': 
+        oracleType = 'NUMBER';
+        break;
+      case 'varchar':
+        oracleType = 'VARCHAR2';
+        break;
+      case 'datetime':
+        oracleType = 'TIMESTAMP';
+        break;
+      case 'float':
+      case 'real':
+        oracleType = 'BINARY_FLOAT';
+        break;
+      case 'double':
+        oracleType = 'BINARY_DOUBLE';
+        break;
+    }
+    
+    if (varSize) {
+      if (varScale) {
+        oracleType += `(${varSize},${varScale})`;
+      } else {
+        oracleType += `(${varSize})`;
+      }
+    }
+    
+    let declaration = `DECLARE\n  v_${varName} ${oracleType}`;
+    if (initialValue) {
+      declaration += ` := ${initialValue}`;
+    }
+    declaration += ";";
+    
+    return declaration;
+  });
+  
+  // Fix standalone SELECT @var = expressions outside of procedures (new)
+  oracleCode = oracleCode.replace(/SELECT\s+@(\w+)\s*=\s*([^;]+)(?!INTO)/gi, "BEGIN\n  SELECT $2 INTO v_$1 FROM dual;\nEND;\n/");
+  
   // Apply specific Oracle optimizations for database parameters
   oracleCode = applyOracleOptimizations(oracleCode);
   
@@ -402,6 +496,43 @@ function fixCommonSyntaxIssues(code: string): string {
   // Fix incorrect NULL comparison
   result = result.replace(/(\w+)\s*=\s*NULL/gi, '$1 IS NULL');
   result = result.replace(/(\w+)\s*<>\s*NULL/gi, '$1 IS NOT NULL');
+  
+  // Fix VAR statements (new)
+  result = result.replace(/VAR\s+(\w+)\s+(\w+)(?:\s*\((\d+)(?:,\s*(\d+))?\))?/gi, (match, varName, varType, varSize, varScale) => {
+    let oracleType = 'VARCHAR2';
+    
+    switch (varType.toLowerCase()) {
+      case 'int': 
+        oracleType = 'NUMBER';
+        break;
+      case 'varchar':
+        oracleType = 'VARCHAR2';
+        break;
+      case 'datetime':
+        oracleType = 'TIMESTAMP';
+        break;
+      case 'float':
+      case 'real':
+        oracleType = 'BINARY_FLOAT';
+        break;
+      case 'double':
+        oracleType = 'BINARY_DOUBLE';
+        break;
+    }
+    
+    if (varSize) {
+      if (varScale) {
+        oracleType += `(${varSize},${varScale})`;
+      } else {
+        oracleType += `(${varSize})`;
+      }
+    }
+    
+    return `VARIABLE ${varName} ${oracleType}`;
+  });
+  
+  // Fix PRINT statements (new)
+  result = result.replace(/PRINT\s+([^;]+)/gi, "BEGIN\n  DBMS_OUTPUT.PUT_LINE($1);\nEND;\n/");
   
   return result;
 }
@@ -467,6 +598,12 @@ function fixRemainingSyntaxIssues(code: string): string {
   
   // Fix trailing slashes
   result = result.replace(/\/\s*$/g, '');
+  
+  // Fix standalone PRINT statements (new)
+  result = result.replace(/^PRINT\s+([^;]+);$/gm, "BEGIN\n  DBMS_OUTPUT.PUT_LINE($1);\nEND;\n/");
+  
+  // Fix standalone variable assignments (new)
+  result = result.replace(/^@(\w+)\s*=\s*([^;]+);$/gm, "BEGIN\n  :$1 := $2;\nEND;\n/");
   
   return result;
 }

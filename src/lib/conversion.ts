@@ -1,4 +1,3 @@
-
 // This is a mock implementation of the conversion logic
 // In a real application, this would interact with backend Python services
 
@@ -125,6 +124,9 @@ const sybasePatterns = {
 export const convertSybaseToOracle = (sybaseCode: string): string => {
   let oracleCode = sybaseCode;
   
+  // Fix common syntax issues before processing
+  oracleCode = fixCommonSyntaxIssues(oracleCode);
+  
   // Apply preprocessing optimizations
   oracleCode = preprocessForOracle(oracleCode);
   
@@ -162,7 +164,7 @@ export const convertSybaseToOracle = (sybaseCode: string): string => {
            `/`;
   });
   
-  // Convert procedures with optimized Oracle syntax
+  // Convert procedures with optimized Oracle syntax and fix syntax errors
   oracleCode = oracleCode.replace(/CREATE\s+PROC(EDURE)?\s+(\w+)\s*(\([\s\S]*?\))?\s*AS([\s\S]*?)(?:GO|$)/gi, (match, _, procName, params, body) => {
     // Parse and convert parameters
     let oracleParams = '';
@@ -313,14 +315,29 @@ BEGIN
       .replace(sybasePatterns.strPattern, 'TO_CHAR($1)')
       
       // Ensure END statements have semicolons for PL/SQL
-      .replace(/END\s*(?!;)/g, 'END;');
+      .replace(/END\s*(?!;)/g, 'END;')
+      
+      // Fix common syntax errors in procedure bodies
+      .replace(/--\s*(.*)$/gm, '/* $1 */')  // Convert -- comments to /* */ style
+      .replace(/\$\$\w+/g, 'v_$&')  // Fix $$ variables
+      .replace(/goto\s+(\w+)/gi, 'GOTO lbl_$1')  // Fix goto labels
+      .replace(/^\s*(\w+):/gm, 'lbl_$1:')  // Fix label definitions
+      .replace(/\[\s*(\w+)\s*\]/g, "$1");  // Remove square brackets around identifiers
     
     // Format the final Oracle procedure with optimization hints
-    return `CREATE OR REPLACE PROCEDURE ${procName}(${oracleParams})\nAS\nBEGIN\n${oracleBody}\nEND;\n/`;
+    return `CREATE OR REPLACE PROCEDURE ${procName}(${oracleParams})
+AS
+BEGIN
+${oracleBody}
+END ${procName};
+/`;
   });
   
   // Convert batch separators
   oracleCode = oracleCode.replace(/\bGO\b/g, '/');
+  
+  // Fix missing semicolons at the end of statements
+  oracleCode = fixMissingSemicolons(oracleCode);
   
   // Convert old-style joins to ANSI joins for better optimizer usage
   oracleCode = oracleCode.replace(/FROM\s+(\w+),\s*(\w+)\s+WHERE\s+(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)/gi, 'FROM $1 JOIN $2 ON $3.$4 = $5.$6');
@@ -336,6 +353,10 @@ BEGIN
   oracleCode = oracleCode.replace(/SET\s+TRANSACTION\s+ISOLATION\s+LEVEL\s+READ\s+UNCOMMITTED/gi, 
     'SET TRANSACTION ISOLATION LEVEL READ COMMITTED');
   
+  // Fix malformed ALTER statements
+  oracleCode = oracleCode.replace(/ALTER\s+TABLE\s+(\w+)\s+MODIFY\s+(\w+)\s+NOT\s+NULL\s*(?!;)/gi, 
+    'ALTER TABLE $1 MODIFY $2 NOT NULL;');
+  
   // Apply specific Oracle optimizations for database parameters
   oracleCode = applyOracleOptimizations(oracleCode);
   
@@ -343,10 +364,112 @@ BEGIN
   oracleCode = addTablePartitioning(oracleCode);
   
   // Ensure all statements end with semicolons
-  oracleCode = oracleCode.replace(/([^;])\s*$/gm, '$1;');
+  oracleCode = oracleCode.replace(/([^;\/])\s*$/gm, '$1;');
+  
+  // Fix any remaining syntax issues
+  oracleCode = fixRemainingSyntaxIssues(oracleCode);
   
   return oracleCode;
 };
+
+/**
+ * Fix common syntax issues before main processing
+ */
+function fixCommonSyntaxIssues(code: string): string {
+  let result = code;
+  
+  // Fix unquoted string literals in INSERT statements
+  result = result.replace(/VALUES\s*\(([^)]*?[a-zA-Z][^)]*?)\)/gi, (match, values) => {
+    // Replace unquoted string values with quoted ones
+    return "VALUES (" + values.replace(/(\s*,\s*)([a-zA-Z][a-zA-Z0-9_]*)(\s*,|\s*\))/g, "$1'$2'$3") + ")";
+  });
+  
+  // Fix incorrect date formats
+  result = result.replace(/(\d{1,2})\/(\d{1,2})\/(\d{4})/g, "TO_DATE('$3-$1-$2', 'YYYY-MM-DD')");
+  
+  // Fix SET NOCOUNT ON statements
+  result = result.replace(/SET\s+NOCOUNT\s+ON/gi, '-- SET NOCOUNT ON (not needed in Oracle)');
+  
+  // Fix incorrect comment syntax
+  result = result.replace(/--\s*(.*)(\n|\r\n|\r)/g, '/* $1 */\n');
+  
+  // Fix incorrect string concatenation
+  result = result.replace(/(\w+)\s*\+\s*(['"])(.*)(['"])/g, '$1 || $2$3$4');
+  
+  // Fix table alias issues
+  result = result.replace(/FROM\s+(\w+)\s+(\w+)(?!\s+ON|\s+WHERE|\s+JOIN)/gi, 'FROM $1 $2 ');
+  
+  // Fix incorrect NULL comparison
+  result = result.replace(/(\w+)\s*=\s*NULL/gi, '$1 IS NULL');
+  result = result.replace(/(\w+)\s*<>\s*NULL/gi, '$1 IS NOT NULL');
+  
+  return result;
+}
+
+/**
+ * Fix missing semicolons at the end of statements
+ */
+function fixMissingSemicolons(code: string): string {
+  let lines = code.split('\n');
+  const statementKeywords = [
+    'SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP', 'ALTER', 'TRUNCATE', 'GRANT', 'REVOKE', 'COMMIT', 'ROLLBACK'
+  ];
+  
+  // Add semicolons after statements if missing
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const nextLine = (i < lines.length - 1) ? lines[i + 1].trim() : '';
+    
+    // Check if line is a statement that needs a semicolon
+    if (line.length > 0 && !line.endsWith(';') && !line.endsWith('/')) {
+      // Check if next line starts with a statement keyword, which suggests current line should end
+      if (statementKeywords.some(keyword => nextLine.startsWith(keyword))) {
+        lines[i] = lines[i] + ';';
+      }
+    }
+  }
+  
+  return lines.join('\n');
+}
+
+/**
+ * Fix remaining syntax issues after main conversion
+ */
+function fixRemainingSyntaxIssues(code: string): string {
+  let result = code;
+  
+  // Fix double forward slashes in PL/SQL blocks
+  result = result.replace(/;\/\//g, ';/');
+  result = result.replace(/END;\s*\/\//g, 'END;/');
+  
+  // Fix incorrect PL/SQL block terminations
+  result = result.replace(/END;(?!\s*\/)/g, 'END;/');
+  
+  // Fix missing BEGIN in PL/SQL blocks
+  result = result.replace(/(AS|IS)(\s+)(?!BEGIN)/gi, '$1$2BEGIN');
+  
+  // Fix incorrect column references in ORDER BY clauses
+  result = result.replace(/ORDER\s+BY\s+(\d+)/gi, 'ORDER BY column_$1');
+  
+  // Fix incorrect table aliasing in JOIN clauses
+  result = result.replace(/JOIN\s+(\w+)\s+(\w+)(?!\s+ON)/gi, 'JOIN $1 AS $2');
+  
+  // Fix double semicolons
+  result = result.replace(/;;/g, ';');
+  
+  // Fix incorrect usage of DECODE
+  result = result.replace(/CASE\s+WHEN\s+(.+?)\s+=\s+(.+?)\s+THEN\s+(.+?)\s+ELSE\s+(.+?)\s+END/gi, 
+                         'DECODE($1, $2, $3, $4)');
+  
+  // Fix missing parentheses around subqueries
+  result = result.replace(/FROM\s+SELECT/gi, 'FROM (SELECT');
+  result = result.replace(/JOIN\s+SELECT/gi, 'JOIN (SELECT');
+  
+  // Fix trailing slashes
+  result = result.replace(/\/\s*$/g, '');
+  
+  return result;
+}
 
 /**
  * Preprocess Sybase code for optimal Oracle conversion

@@ -1,4 +1,3 @@
-
 // This is a mock implementation of the conversion logic
 // In a real application, this would interact with backend Python services
 
@@ -115,10 +114,23 @@ const sybasePatterns = {
   // Optimize transaction isolation level
   transactionIsolationPattern: /SET TRANSACTION ISOLATION LEVEL\s+(\w+)/gi,
   
-  // Fix for var, print, and select statements (New patterns)
+  // Fix for var, print, and select statements (Enhanced patterns)
   varPattern: /DECLARE\s+@(\w+)\s+(\w+)(?:\s*\((\d+)(?:,\s*(\d+))?\))?(?:\s*=\s*([^;]+))?/gi,
   printPattern: /PRINT\s+([^;]+)/gi,
   selectAssignmentPattern: /SELECT\s+@(\w+)\s*=\s*([^;]+)/gi,
+  
+  // Added patterns for improved Oracle conversion
+  setPattern: /SET\s+@(\w+)\s*=\s*([^;]+)/gi,
+  ifExistsPattern: /IF\s+EXISTS\s*\(\s*SELECT\s+\*\s+FROM\s+(.*?)\s+WHERE\s+(.*?)\)/gi,
+  ifNotExistsPattern: /IF\s+NOT\s+EXISTS\s*\(\s*SELECT\s+\*\s+FROM\s+(.*?)\s+WHERE\s+(.*?)\)/gi,
+  commentPattern: /--\s*(.*?)$/gm,
+  spHelpTextPattern: /EXEC\s+sp_helptext\s+([^;]+)/gi,
+  raiserrorPattern: /RAISERROR\s*\(\s*([^,]+)(?:,\s*(\d+)(?:,\s*(\d+))?)?\s*(?:,\s*([^)]+))?\)/gi,
+  xpCmdShellPattern: /EXEC\s+xp_cmdshell\s+([^;]+)/gi,
+  sysColumnsPattern: /sys\.columns/gi,
+  sysObjectsPattern: /sys\.objects/gi,
+  dbNamePattern: /\[(\w+)\]/g,
+  execPattern: /EXEC(?:UTE)?\s+(\w+)(?:\s+(.*))?/gi
 };
 
 /**
@@ -248,50 +260,158 @@ export const convertSybaseToOracle = (sybaseCode: string): string => {
         return `v_${varName} ${oracleType}`;
       })
       
-      // Convert DECLARE @var statements (new)
+      // Convert DECLARE @var statements (enhanced)
       .replace(sybasePatterns.varPattern, (match, varName, varType, varSize, varScale, initialValue) => {
-        let oracleType = 'VARCHAR2';
+        let oracleType = 'VARCHAR2(4000)'; // Default to larger size for VARCHAR2
         
         switch (varType.toLowerCase()) {
           case 'int': 
             oracleType = 'NUMBER';
             break;
+          case 'bigint':
+            oracleType = 'NUMBER(19)';
+            break;
+          case 'smallint':
+            oracleType = 'NUMBER(5)';
+            break;
+          case 'tinyint':
+            oracleType = 'NUMBER(3)';
+            break;
+          case 'numeric':
+          case 'decimal':
+            if (varSize && varScale) {
+              oracleType = `NUMBER(${varSize},${varScale})`;
+            } else if (varSize) {
+              oracleType = `NUMBER(${varSize})`;
+            } else {
+              oracleType = 'NUMBER';
+            }
+            break;
           case 'varchar':
-            oracleType = 'VARCHAR2';
+            if (varSize) {
+              oracleType = `VARCHAR2(${varSize})`;
+            }
+            break;
+          case 'nvarchar':
+            if (varSize) {
+              oracleType = `NVARCHAR2(${varSize})`;
+            } else {
+              oracleType = 'NVARCHAR2(4000)';
+            }
+            break;
+          case 'char':
+            if (varSize) {
+              oracleType = `CHAR(${varSize})`;
+            } else {
+              oracleType = 'CHAR(1)';
+            }
+            break;
+          case 'nchar':
+            if (varSize) {
+              oracleType = `NCHAR(${varSize})`;
+            } else {
+              oracleType = 'NCHAR(1)';
+            }
             break;
           case 'datetime':
+          case 'smalldatetime':
             oracleType = 'TIMESTAMP';
             break;
           case 'float':
           case 'real':
             oracleType = 'BINARY_FLOAT';
             break;
-          case 'double':
-            oracleType = 'BINARY_DOUBLE';
+          case 'money':
+          case 'smallmoney':
+            oracleType = 'NUMBER(19,4)';
             break;
-        }
-        
-        if (varSize) {
-          if (varScale) {
-            oracleType += `(${varSize},${varScale})`;
-          } else {
-            oracleType += `(${varSize})`;
-          }
+          case 'bit':
+            oracleType = 'NUMBER(1)';
+            break;
+          case 'text':
+            oracleType = 'CLOB';
+            break;
+          case 'image':
+            oracleType = 'BLOB';
+            break;
         }
         
         let declaration = `v_${varName} ${oracleType}`;
         if (initialValue) {
-          declaration += ` := ${initialValue}`;
+          declaration += ` := ${initialValue.replace(/@/g, 'v_')}`;
         }
         
         return declaration;
       })
       
-      // Convert PRINT statements to DBMS_OUTPUT.PUT_LINE (new)
-      .replace(sybasePatterns.printPattern, "DBMS_OUTPUT.PUT_LINE($1)")
+      // Convert SET variable assignments
+      .replace(sybasePatterns.setPattern, (match, varName, value) => {
+        return `v_${varName} := ${value.replace(/@/g, 'v_')}`;
+      })
       
-      // Convert SELECT @var = value to variable assignment (new)
-      .replace(sybasePatterns.selectAssignmentPattern, "v_$1 := $2")
+      // Convert PRINT statements to DBMS_OUTPUT.PUT_LINE
+      .replace(sybasePatterns.printPattern, (match, content) => {
+        // Replace any variable references in the print statement
+        content = content.replace(/@(\w+)/g, 'v_$1');
+        return `DBMS_OUTPUT.PUT_LINE(${content})`;
+      })
+      
+      // Convert SELECT @var = value to variable assignment
+      .replace(sybasePatterns.selectAssignmentPattern, (match, varName, value) => {
+        // Clean up the value by replacing any Sybase variable references
+        value = value.replace(/@(\w+)/g, 'v_$1');
+        // For simple values, use direct assignment
+        if (!value.includes('SELECT') && !value.includes('FROM')) {
+          return `v_${varName} := ${value}`;
+        }
+        // Otherwise use SELECT INTO
+        return `SELECT ${value} INTO v_${varName} FROM dual`;
+      })
+      
+      // Convert IF EXISTS to Oracle's EXISTS clause
+      .replace(sybasePatterns.ifExistsPattern, (match, table, condition) => {
+        condition = condition.replace(/@(\w+)/g, 'v_$1');
+        return `IF EXISTS (SELECT 1 FROM ${table} WHERE ${condition}) THEN`;
+      })
+      
+      // Convert IF NOT EXISTS to Oracle's NOT EXISTS clause
+      .replace(sybasePatterns.ifNotExistsPattern, (match, table, condition) => {
+        condition = condition.replace(/@(\w+)/g, 'v_$1');
+        return `IF NOT EXISTS (SELECT 1 FROM ${table} WHERE ${condition}) THEN`;
+      })
+      
+      // Convert RAISERROR to RAISE_APPLICATION_ERROR
+      .replace(sybasePatterns.raiserrorPattern, (match, message, severity, state, args) => {
+        let errorCode = severity ? parseInt(severity) * 1000 + (state ? parseInt(state) : 0) : 20000;
+        message = message.replace(/@(\w+)/g, 'v_$1');
+        
+        if (errorCode < 20000 || errorCode > 20999) {
+          errorCode = 20000; // Oracle user-defined errors must be between 20000 and 20999
+        }
+        
+        if (args) {
+          args = args.replace(/@(\w+)/g, 'v_$1');
+          return `RAISE_APPLICATION_ERROR(-${errorCode}, ${message} || ' ' || ${args})`;
+        } else {
+          return `RAISE_APPLICATION_ERROR(-${errorCode}, ${message})`;
+        }
+      })
+      
+      // Convert system table references
+      .replace(sybasePatterns.sysColumnsPattern, 'ALL_TAB_COLUMNS')
+      .replace(sybasePatterns.sysObjectsPattern, 'ALL_OBJECTS')
+      
+      // Convert EXEC to direct function calls or BEGIN...END blocks
+      .replace(sybasePatterns.execPattern, (match, procName, params) => {
+        if (!params) {
+          return `BEGIN\n  ${procName};\nEND;`;
+        }
+        
+        // Clean up parameters by replacing @ with v_
+        params = params.replace(/@(\w+)/g, 'v_$1');
+        
+        return `BEGIN\n  ${procName}(${params});\nEND;`;
+      })
       
       // Optimize SELECT into variables with bulk collect when possible
       .replace(/SELECT\s+(.*?)\s*=\s*(.*?)(?:;|$)/g, 'SELECT $2 INTO $1 FROM dual;')
@@ -362,6 +482,35 @@ BEGIN
         }
       })
       
+      // Convert DATEDIFF function to Oracle equivalent
+      .replace(sybasePatterns.datediffPattern, (match, unit, startDate, endDate) => {
+        switch (unit.toLowerCase()) {
+          case 'day':
+          case 'd':
+            return `ROUND(${endDate} - ${startDate})`;
+          case 'month':
+          case 'm':
+            return `MONTHS_BETWEEN(${endDate}, ${startDate})`;
+          case 'year':
+          case 'yy':
+          case 'yyyy':
+            return `ROUND(MONTHS_BETWEEN(${endDate}, ${startDate}) / 12)`;
+          case 'hour':
+          case 'hh':
+            return `ROUND((${endDate} - ${startDate}) * 24)`;
+          case 'minute':
+          case 'mi':
+          case 'n':
+            return `ROUND((${endDate} - ${startDate}) * 24 * 60)`;
+          case 'second':
+          case 'ss':
+          case 's':
+            return `ROUND((${endDate} - ${startDate}) * 24 * 60 * 60)`;
+          default:
+            return `ROUND((${endDate} - ${startDate}) * 24 * 60 * 60)`;
+        }
+      })
+      
       // Convert string functions for better performance
       .replace(sybasePatterns.strPattern, 'TO_CHAR($1)')
       
@@ -373,7 +522,9 @@ BEGIN
       .replace(/\$\$\w+/g, 'v_$&')  // Fix $$ variables
       .replace(/goto\s+(\w+)/gi, 'GOTO lbl_$1')  // Fix goto labels
       .replace(/^\s*(\w+):/gm, 'lbl_$1:')  // Fix label definitions
-      .replace(/\[\s*(\w+)\s*\]/g, "$1");  // Remove square brackets around identifiers
+      .replace(/\[\s*(\w+)\s*\]/g, "$1")   // Remove square brackets around identifiers
+      .replace(/@@ERROR/gi, 'SQLCODE')      // Replace @@ERROR with SQLCODE
+      .replace(/@@ROWCOUNT/gi, 'SQL%ROWCOUNT'); // Replace @@ROWCOUNT with SQL%ROWCOUNT
     
     // Format the final Oracle procedure with optimization hints
     return `CREATE OR REPLACE PROCEDURE ${procName}(${oracleParams})
@@ -408,48 +559,137 @@ END ${procName};
   oracleCode = oracleCode.replace(/ALTER\s+TABLE\s+(\w+)\s+MODIFY\s+(\w+)\s+NOT\s+NULL\s*(?!;)/gi, 
     'ALTER TABLE $1 MODIFY $2 NOT NULL;');
   
-  // Fix standalone variable declarations (new)
+  // Fix standalone variable declarations (enhanced)
   oracleCode = oracleCode.replace(/DECLARE\s+@(\w+)\s+(\w+)(?:\s*\((\d+)(?:,\s*(\d+))?\))?(?:\s*=\s*([^;]+))?/gi, (match, varName, varType, varSize, varScale, initialValue) => {
-    let oracleType = 'VARCHAR2';
+    let oracleType = 'VARCHAR2(4000)';
     
     switch (varType.toLowerCase()) {
       case 'int': 
         oracleType = 'NUMBER';
         break;
+      case 'bigint':
+        oracleType = 'NUMBER(19)';
+        break;
+      case 'smallint':
+        oracleType = 'NUMBER(5)';
+        break;
+      case 'tinyint':
+        oracleType = 'NUMBER(3)';
+        break;
+      case 'numeric':
+      case 'decimal':
+        if (varSize && varScale) {
+          oracleType = `NUMBER(${varSize},${varScale})`;
+        } else if (varSize) {
+          oracleType = `NUMBER(${varSize})`;
+        } else {
+          oracleType = 'NUMBER';
+        }
+        break;
       case 'varchar':
-        oracleType = 'VARCHAR2';
+        if (varSize) {
+          oracleType = `VARCHAR2(${varSize})`;
+        }
+        break;
+      case 'nvarchar':
+        if (varSize) {
+          oracleType = `NVARCHAR2(${varSize})`;
+        } else {
+          oracleType = 'NVARCHAR2(4000)';
+        }
         break;
       case 'datetime':
+      case 'smalldatetime':
         oracleType = 'TIMESTAMP';
         break;
       case 'float':
       case 'real':
         oracleType = 'BINARY_FLOAT';
         break;
-      case 'double':
-        oracleType = 'BINARY_DOUBLE';
+      case 'bit':
+        oracleType = 'NUMBER(1)';
         break;
-    }
-    
-    if (varSize) {
-      if (varScale) {
-        oracleType += `(${varSize},${varScale})`;
-      } else {
-        oracleType += `(${varSize})`;
-      }
     }
     
     let declaration = `DECLARE\n  v_${varName} ${oracleType}`;
     if (initialValue) {
-      declaration += ` := ${initialValue}`;
+      declaration += ` := ${initialValue.replace(/@/g, 'v_')}`;
     }
-    declaration += ";";
+    declaration += ";\nBEGIN";
     
     return declaration;
   });
   
-  // Fix standalone SELECT @var = expressions outside of procedures (new)
-  oracleCode = oracleCode.replace(/SELECT\s+@(\w+)\s*=\s*([^;]+)(?!INTO)/gi, "BEGIN\n  SELECT $2 INTO v_$1 FROM dual;\nEND;\n/");
+  // Fix standalone SELECT @var = expressions outside of procedures (enhanced)
+  oracleCode = oracleCode.replace(/SELECT\s+@(\w+)\s*=\s*([^;]+)(?!INTO)/gi, (match, varName, value) => {
+    // Clean up the value by replacing any Sybase variable references
+    value = value.replace(/@(\w+)/g, 'v_$1');
+    
+    // If the value is a simple expression, use direct assignment
+    if (!value.includes('SELECT') && !value.includes('FROM')) {
+      return `BEGIN\n  v_${varName} := ${value};\nEND;\n/`;
+    }
+    
+    // Otherwise use SELECT INTO
+    return `BEGIN\n  SELECT ${value} INTO v_${varName} FROM dual;\nEND;\n/`;
+  });
+  
+  // Fix standalone SET @var = expressions
+  oracleCode = oracleCode.replace(/SET\s+@(\w+)\s*=\s*([^;]+)/gi, (match, varName, value) => {
+    // Clean up the value by replacing any Sybase variable references
+    value = value.replace(/@(\w+)/g, 'v_$1');
+    return `BEGIN\n  v_${varName} := ${value};\nEND;\n/`;
+  });
+  
+  // Fix standalone PRINT statements (enhanced)
+  oracleCode = oracleCode.replace(/PRINT\s+([^;]+);?$/gm, (match, content) => {
+    // Replace any variable references in the print statement
+    content = content.replace(/@(\w+)/g, 'v_$1');
+    return `BEGIN\n  DBMS_OUTPUT.PUT_LINE(${content});\nEND;\n/`;
+  });
+  
+  // Convert shorthand IF conditions
+  oracleCode = oracleCode.replace(/IF\s+([^=><\s]+)(?=\s+BEGIN|\s+THEN|\s+ELSE|\s+[^\w]|$)/gi, 'IF $1 = 1');
+  
+  // Handle NULL comparisons
+  oracleCode = oracleCode.replace(/([^=><!\s]+)\s*=\s*NULL/gi, '$1 IS NULL');
+  oracleCode = oracleCode.replace(/([^=><!\s]+)\s*<>\s*NULL/gi, '$1 IS NOT NULL');
+  
+  // Make sure all END CASE statements are properly closed
+  oracleCode = oracleCode.replace(/END\s+CASE/gi, 'END CASE;');
+  
+  // Add missing END statements for BEGIN blocks
+  oracleCode = balanceBeginEndStatements(oracleCode);
+  
+  // Convert xp_cmdshell to DBMS_SCHEDULER
+  oracleCode = oracleCode.replace(sybasePatterns.xpCmdShellPattern, (match, command) => {
+    return `BEGIN
+  -- Oracle alternative to xp_cmdshell
+  DBMS_SCHEDULER.CREATE_JOB(
+    job_name => 'RUN_OS_COMMAND', 
+    job_type => 'EXECUTABLE',
+    job_action => '/bin/bash',
+    number_of_arguments => 3,
+    enabled => FALSE
+  );
+  
+  DBMS_SCHEDULER.SET_JOB_ARGUMENT_VALUE(
+    job_name => 'RUN_OS_COMMAND',
+    argument_position => 1,
+    argument_value => '-c'
+  );
+  
+  DBMS_SCHEDULER.SET_JOB_ARGUMENT_VALUE(
+    job_name => 'RUN_OS_COMMAND',
+    argument_position => 2,
+    argument_value => ${command}
+  );
+  
+  DBMS_SCHEDULER.ENABLE('RUN_OS_COMMAND');
+  DBMS_SCHEDULER.RUN_JOB('RUN_OS_COMMAND', FALSE);
+END;
+/`;
+  });
   
   // Apply specific Oracle optimizations for database parameters
   oracleCode = applyOracleOptimizations(oracleCode);
@@ -457,11 +697,14 @@ END ${procName};
   // Add table partitioning for large tables (identifying by patterns or comments)
   oracleCode = addTablePartitioning(oracleCode);
   
-  // Ensure all statements end with semicolons
-  oracleCode = oracleCode.replace(/([^;\/])\s*$/gm, '$1;');
+  // Clean up recursive declarations (variable declarations inside loops)
+  oracleCode = fixRecursiveDeclarations(oracleCode);
   
   // Fix any remaining syntax issues
   oracleCode = fixRemainingSyntaxIssues(oracleCode);
+  
+  // Ensure all statements end with semicolons
+  oracleCode = oracleCode.replace(/([^;\/])\s*$/gm, '$1;');
   
   return oracleCode;
 };
@@ -484,11 +727,13 @@ function fixCommonSyntaxIssues(code: string): string {
   // Fix SET NOCOUNT ON statements
   result = result.replace(/SET\s+NOCOUNT\s+ON/gi, '-- SET NOCOUNT ON (not needed in Oracle)');
   
-  // Fix incorrect comment syntax
+  // Fix incorrect comment syntax - make sure to preserve the comment content
   result = result.replace(/--\s*(.*)(\n|\r\n|\r)/g, '/* $1 */\n');
   
   // Fix incorrect string concatenation
   result = result.replace(/(\w+)\s*\+\s*(['"])(.*)(['"])/g, '$1 || $2$3$4');
+  result = result.replace(/(['"])(.*)(['"])\s*\+\s*(\w+)/g, '$1$2$3 || $4');
+  result = result.replace(/(['"])(.*)(['"])\s*\+\s*(['"])(.*)(['"])/g, '$1$2$3 || $4$5$6');
   
   // Fix table alias issues
   result = result.replace(/FROM\s+(\w+)\s+(\w+)(?!\s+ON|\s+WHERE|\s+JOIN)/gi, 'FROM $1 $2 ');
@@ -497,42 +742,88 @@ function fixCommonSyntaxIssues(code: string): string {
   result = result.replace(/(\w+)\s*=\s*NULL/gi, '$1 IS NULL');
   result = result.replace(/(\w+)\s*<>\s*NULL/gi, '$1 IS NOT NULL');
   
-  // Fix VAR statements (new)
+  // Fix VAR statements (enhanced)
   result = result.replace(/VAR\s+(\w+)\s+(\w+)(?:\s*\((\d+)(?:,\s*(\d+))?\))?/gi, (match, varName, varType, varSize, varScale) => {
-    let oracleType = 'VARCHAR2';
+    let oracleType = 'VARCHAR2(4000)';
     
     switch (varType.toLowerCase()) {
       case 'int': 
         oracleType = 'NUMBER';
         break;
+      case 'bigint':
+        oracleType = 'NUMBER(19)';
+        break;
+      case 'smallint':
+        oracleType = 'NUMBER(5)';
+        break;
+      case 'tinyint':
+        oracleType = 'NUMBER(3)';
+        break;
+      case 'numeric':
+      case 'decimal':
+        if (varSize && varScale) {
+          oracleType = `NUMBER(${varSize},${varScale})`;
+        } else if (varSize) {
+          oracleType = `NUMBER(${varSize})`;
+        } else {
+          oracleType = 'NUMBER';
+        }
+        break;
       case 'varchar':
-        oracleType = 'VARCHAR2';
+        if (varSize) {
+          oracleType = `VARCHAR2(${varSize})`;
+        }
+        break;
+      case 'nvarchar':
+        if (varSize) {
+          oracleType = `NVARCHAR2(${varSize})`;
+        } else {
+          oracleType = 'NVARCHAR2(4000)';
+        }
         break;
       case 'datetime':
+      case 'smalldatetime':
         oracleType = 'TIMESTAMP';
         break;
       case 'float':
       case 'real':
         oracleType = 'BINARY_FLOAT';
         break;
-      case 'double':
-        oracleType = 'BINARY_DOUBLE';
+      case 'bit':
+        oracleType = 'NUMBER(1)';
         break;
-    }
-    
-    if (varSize) {
-      if (varScale) {
-        oracleType += `(${varSize},${varScale})`;
-      } else {
-        oracleType += `(${varSize})`;
-      }
     }
     
     return `VARIABLE ${varName} ${oracleType}`;
   });
   
-  // Fix PRINT statements (new)
-  result = result.replace(/PRINT\s+([^;]+)/gi, "BEGIN\n  DBMS_OUTPUT.PUT_LINE($1);\nEND;\n/");
+  // Fix PRINT statements (enhanced)
+  result = result.replace(/PRINT\s+([^;]+)/gi, (match, content) => {
+    // Replace variable references in content
+    content = content.replace(/@(\w+)/g, 'v_$1');
+    return `BEGIN\n  DBMS_OUTPUT.PUT_LINE(${content});\nEND;\n/`;
+  });
+  
+  // Fix EXEC sp_helptext to Oracle's equivalent (schema information)
+  result = result.replace(/EXEC\s+sp_helptext\s+([^;]+)/gi, (match, objectName) => {
+    return `-- Oracle equivalent to sp_helptext
+SELECT TEXT FROM USER_SOURCE WHERE NAME = UPPER('${objectName.replace(/'/g, "''")}') ORDER BY LINE;`;
+  });
+  
+  // Fix database name references in square brackets
+  result = result.replace(/\[(\w+)\]/g, "$1");
+  
+  // Fix Sybase @@variables
+  result = result.replace(/@@IDENTITY/gi, 'your_sequence.CURRVAL');
+  result = result.replace(/@@ERROR/gi, 'SQLCODE');
+  result = result.replace(/@@ROWCOUNT/gi, 'SQL%ROWCOUNT');
+  result = result.replace(/@@TRANCOUNT/gi, '(CASE WHEN dbms_transaction.local_transaction_id IS NOT NULL THEN 1 ELSE 0 END)');
+  
+  // Fix WAITFOR DELAY
+  result = result.replace(/WAITFOR\s+DELAY\s+['"](\d+):(\d+):(\d+)['"]/, (match, hours, minutes, seconds) => {
+    const totalSeconds = parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseInt(seconds);
+    return `BEGIN\n  DBMS_LOCK.SLEEP(${totalSeconds});\nEND;`;
+  });
   
   return result;
 }
@@ -561,6 +852,96 @@ function fixMissingSemicolons(code: string): string {
   }
   
   return lines.join('\n');
+}
+
+/**
+ * Balance BEGIN and END statements to ensure proper nesting
+ */
+function balanceBeginEndStatements(code: string): string {
+  const lines = code.split('\n');
+  let beginCount = 0;
+  let endCount = 0;
+  
+  // Count BEGIN and END statements
+  for (const line of lines) {
+    // Count BEGIN keywords not inside comments or strings
+    const beginMatches = line.match(/\bBEGIN\b/gi);
+    if (beginMatches) {
+      beginCount += beginMatches.length;
+    }
+    
+    // Count END keywords not inside comments or strings
+    const endMatches = line.match(/\bEND;?\b/gi);
+    if (endMatches) {
+      endCount += endMatches.length;
+    }
+  }
+  
+  // If imbalanced, add missing END statements
+  if (beginCount > endCount) {
+    const missingEnds = beginCount - endCount;
+    let result = code;
+    
+    for (let i = 0; i < missingEnds; i++) {
+      result += '\nEND;';
+    }
+    
+    return result;
+  }
+  
+  return code;
+}
+
+/**
+ * Fix recursive declarations (variable declarations inside loops)
+ */
+function fixRecursiveDeclarations(code: string): string {
+  // Find DECLARE statements inside loops or IF blocks
+  const declarationInLoopPattern = /(\bFOR\b.*?\bLOOP\b|\bWHILE\b.*?\bLOOP\b|\bIF\b.*?\bTHEN\b)([^;]*?)(\bDECLARE\b)/gi;
+  
+  let result = code;
+  let match;
+  
+  // Move declarations outside loops
+  while ((match = declarationInLoopPattern.exec(code)) !== null) {
+    const beforeLoop = code.substring(0, match.index);
+    const loopStart = match[1];
+    const loopContent = match[2];
+    const declaration = match[3];
+    const afterDeclaration = code.substring(match.index + match[0].length);
+    
+    // Find the declaration block and move it before the loop
+    const declarationBlock = extractDeclarationBlock(code.substring(match.index + match[0].length - declaration.length));
+    
+    if (declarationBlock) {
+      result = beforeLoop + declarationBlock + '\n' + loopStart + loopContent + afterDeclaration.substring(declarationBlock.length);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Extract a complete declaration block
+ */
+function extractDeclarationBlock(code: string): string | null {
+  const lines = code.split('\n');
+  let declarationBlock = '';
+  let inDeclaration = true;
+  
+  for (const line of lines) {
+    if (inDeclaration) {
+      declarationBlock += line + '\n';
+      
+      // Check if declaration block ends
+      if (line.trim().endsWith(';') && !line.includes('DECLARE')) {
+        inDeclaration = false;
+        break;
+      }
+    }
+  }
+  
+  return declarationBlock.trim().length > 0 ? declarationBlock.trim() : null;
 }
 
 /**
@@ -599,11 +980,25 @@ function fixRemainingSyntaxIssues(code: string): string {
   // Fix trailing slashes
   result = result.replace(/\/\s*$/g, '');
   
-  // Fix standalone PRINT statements (new)
+  // Fix standalone PRINT statements (enhanced)
   result = result.replace(/^PRINT\s+([^;]+);$/gm, "BEGIN\n  DBMS_OUTPUT.PUT_LINE($1);\nEND;\n/");
   
-  // Fix standalone variable assignments (new)
+  // Fix standalone variable assignments (enhanced)
   result = result.replace(/^@(\w+)\s*=\s*([^;]+);$/gm, "BEGIN\n  :$1 := $2;\nEND;\n/");
+  
+  // Fix improper variable references in SQL statements
+  result = result.replace(/([^\w])@(\w+)([^\w])/g, '$1v_$2$3');
+  
+  // Fix incorrect CASE expressions
+  result = result.replace(/\bCASE\b([^W]*)WHEN\b/gi, 'CASE $1WHEN');
+  
+  // Fix missing END for CASE statements
+  result = result.replace(/\bCASE\b.*?\bWHEN\b.*?\bTHEN\b.*?(?!\bEND\b)/gi, (match) => {
+    if (!match.includes('END')) {
+      return match + ' END';
+    }
+    return match;
+  });
   
   return result;
 }
@@ -623,6 +1018,15 @@ function preprocessForOracle(code: string): string {
   
   // Standardize quotation marks
   result = result.replace(/"/g, "'");
+  
+  // Preprocess variable declarations to ensure they're handled correctly
+  result = result.replace(/@(\w+)/g, (match, varName) => {
+    // Don't replace if it's part of a DECLARE statement
+    if (result.includes(`DECLARE ${match}`)) {
+      return match;
+    }
+    return `v_${varName}`;
+  });
   
   return result;
 }
@@ -644,6 +1048,14 @@ function applyOracleOptimizations(code: string): string {
   // Replace SELECT COUNT(*) with more efficient alternatives when appropriate
   result = result.replace(/SELECT\s+COUNT\(\*\)\s+FROM\s+(\w+)/gi, 
     'SELECT /*+ PARALLEL */ COUNT(1) FROM $1');
+  
+  // Optimize IN clauses with large lists
+  result = result.replace(/IN\s*\(([^)]+,){10,}[^)]+\)/gi, (match) => {
+    return match.replace(/IN\s*\((.+)\)/, 'IN (SELECT column_value FROM TABLE(sys.odcivarchar2list($1)))');
+  });
+  
+  // Optimize LIKE operations
+  result = result.replace(/LIKE\s+'%([^%]+)%'/gi, "LIKE '%$1%' /*+ SUBSTRING_INDEX */");
   
   return result;
 }
